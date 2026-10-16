@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { X, Download, Printer } from "lucide-react";
+import { trackingUrl } from "../services/appUrl";
 
 // Generates and displays the tracking QR code for a document.
 // Scanning it (or the printed routing slip) opens the public track page.
 export default function QrCodeModal({ doc, onClose }) {
   const [dataUrl, setDataUrl] = useState("");
 
-  const url = `${window.location.origin}/track-documents?id=${encodeURIComponent(doc.tracking_id)}`;
+  const url = trackingUrl(doc.tracking_id);
 
   useEffect(() => {
     let mounted = true;

@@ -8,6 +8,7 @@ import DeadlineTag from "./DeadlineTag";
 import QrCodeModal from "./QrCodeModal";
 import AuditLog from "./AuditLog";
 import { isMyTurn, stepLabel, fetchAuditLogs, getAttachmentUrl, deleteDocument, ROLES } from "../services/documentService";
+import { trackingUrl } from "../services/appUrl";
 
 const STEP_STYLE = {
   approved: { bg: "#f0fdf4", dot: "#16a34a", icon: "OK", hint: "Approved" },
@@ -25,7 +26,7 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [attachmentMissing, setAttachmentMissing] = useState(false);
 
-  const trackUrl = `${window.location.origin}/track-documents?id=${encodeURIComponent(doc.tracking_id)}`;
+  const trackUrl = trackingUrl(doc.tracking_id);
   const [auditLogs, setAuditLogs] = useState([]);
 
   useEffect(() => {
