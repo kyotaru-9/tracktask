@@ -1,76 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowRight, Layers, Building2, Server, FileSignature, ArrowUpRight, Zap,
+  ArrowRight, Layers, Building2, Server, FileSignature, Zap,
   UserPlus, FileText, Search
 } from 'lucide-react'
 import './LandingPage.css'
-
-const MOCK_DOCUMENTS = {
-  'DOC-2026-MAYOR': {
-    id: 'DOC-2026-MAYOR',
-    title: 'Solid Waste Management Strategy Plan 2026',
-    type: 'Executive Proposal',
-    origin: 'City ENRO Office',
-    custodian: 'Office of the Mayor',
-    receivedAt: 'July 01, 2026 - 09:30 AM',
-    status: 'Registry Finalized',
-    progress: 100,
-    steps: [
-      { name: 'Node Initiated', dept: 'City ENRO', status: 'completed', time: 'June 28, 2026' },
-      { name: 'SWM Review Passed', dept: 'SWM Secretary', status: 'completed', time: 'June 29, 2026' },
-      { name: 'Admin Endorsement', dept: 'City Administrator', status: 'completed', time: 'June 30, 2026' },
-      { name: 'Final Mayor Approval', dept: 'Office of the Mayor', status: 'completed', time: 'July 01, 2026' }
-    ]
-  },
-  'DOC-2026-ADMIN': {
-    id: 'DOC-2026-ADMIN',
-    title: 'Annual Budget Allocations for Environmental Protection',
-    type: 'Financial Requisition',
-    origin: 'SWM Secretary Office',
-    custodian: 'City Administrator Office',
-    receivedAt: 'July 01, 2026 - 02:15 PM',
-    status: 'Pending Signature',
-    progress: 75,
-    steps: [
-      { name: 'Node Initiated', dept: 'SWM Secretary', status: 'completed', time: 'June 29, 2026' },
-      { name: 'SWM Review Passed', dept: 'SWM Secretary', status: 'completed', time: 'June 30, 2026' },
-      { name: 'Admin Endorsement', dept: 'City Administrator', status: 'current', time: 'In Progress' },
-      { name: 'Final Mayor Approval', dept: 'Office of the Mayor', status: 'pending', time: 'Awaiting Prev. Step' }
-    ]
-  },
-  'DOC-2026-ENRO': {
-    id: 'DOC-2026-ENRO',
-    title: 'Environmental Compliance Audit - Sector D',
-    type: 'Compliance Report',
-    origin: 'Field Inspector Division',
-    custodian: 'City ENRO Office',
-    receivedAt: 'July 02, 2026 - 08:00 AM',
-    status: 'Under Technical Evaluation',
-    progress: 25,
-    steps: [
-      { name: 'Node Initiated', dept: 'Field Inspector', status: 'completed', time: 'July 02, 2026' },
-      { name: 'ENRO Review Process', dept: 'City ENRO', status: 'current', time: 'In Progress' },
-      { name: 'Admin Endorsement', dept: 'City Administrator', status: 'pending', time: 'Awaiting Prev. Step' },
-      { name: 'Final Mayor Approval', dept: 'Office of the Mayor', status: 'pending', time: 'Awaiting Prev. Step' }
-    ]
-  },
-  'DOC-2026-SWM': {
-    id: 'DOC-2026-SWM',
-    title: 'Special Solid Waste Collector Personnel Registry',
-    type: 'Personnel Registry',
-    origin: 'Human Resources Division',
-    custodian: 'SWM Secretary Office',
-    receivedAt: 'July 01, 2026 - 04:30 PM',
-    status: 'Awaiting Verification',
-    progress: 50,
-    steps: [
-      { name: 'Node Initiated', dept: 'HR Division', status: 'completed', time: 'July 01, 2026' },
-      { name: 'SWM Review Process', dept: 'SWM Secretary', status: 'current', time: 'In Progress' },
-      { name: 'Admin Endorsement', dept: 'City Administrator', status: 'pending', time: 'Awaiting Prev. Step' },
-      { name: 'Final Mayor Approval', dept: 'Office of the Mayor', status: 'pending', time: 'Awaiting Prev. Step' }
-    ]
-  }
-}
 
 const HOW_IT_WORKS_STEPS = [
   {
@@ -92,11 +25,6 @@ const HOW_IT_WORKS_STEPS = [
 
 const LandingPage = () => {
   const navigate = useNavigate()
-
-  const selectDemoDoc = () => {
-    navigate('/request-document')
-  }
-
   return (
     <div className="landing-layout">
       {/* Grid Pattern Overlay */}

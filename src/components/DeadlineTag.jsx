@@ -2,7 +2,7 @@ import { daysUntil, formatDeadline } from "../utils/deadline";
 
 export default function DeadlineTag({ deadline, status }) {
   if (!deadline) return <span style={{ fontSize: 12, color: "#94a3b8" }}>—</span>;
-  const isDone = status === "completed" || status === "rejected";
+  const isDone = status === "completed" || status === "done" || status === "rejected";
   const diff = daysUntil(deadline);
   let color = "#64748b", label = formatDeadline(deadline), bg = "transparent";
   if (!isDone) {

@@ -1,45 +1,27 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../../services/supabaseClient'
+import { signIn } from '../../services/authService'
 import {
   Mail, Lock, Eye, EyeOff, ShieldAlert,
-  Loader2, Zap, UserCheck,
-  Building2, Server, Layers, SquarePen
+  Loader2, Zap, ArrowLeft, QrCode, Bell, FileText,
 } from 'lucide-react'
 import './Login.css'
 
-const ROLES = [
+const BRAND_FEATURES = [
   {
-    key: 'enro',
-    label: 'City ENRO',
-    description: 'City Environment and Natural Resources Office',
-    email: 'cityenro@gmail.com',
-    icon: Building2,
-    accent: 'role-enro',
+    icon: QrCode,
+    title: 'QR-tracked documents',
+    text: 'Every file gets a Track ID and QR code, scannable from intake to approval.',
   },
   {
-    key: 'swm',
-    label: 'SWM Secretary',
-    description: 'Solid Waste Management',
-    email: 'swmsecretary@gmail.com',
-    icon: Server,
-    accent: 'role-swm',
+    icon: Bell,
+    title: 'Real-time notifications',
+    text: 'Each office is alerted the moment a document reaches their step.',
   },
   {
-    key: 'admin',
-    label: 'City Administrator',
-    description: 'City Administration',
-    email: 'cityadministrator@gmail.com',
-    icon: Layers,
-    accent: 'role-admin',
-  },
-  {
-    key: 'mayor',
-    label: 'City Mayor',
-    description: 'Office of the Mayor',
-    email: 'citymayor@gmail.com',
-    icon: SquarePen,
-    accent: 'role-mayor',
+    icon: FileText,
+    title: 'Sequential approvals',
+    text: 'Forward routing with automatic reverse return, fully auditable.',
   },
 ]
 
@@ -52,7 +34,6 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const [autofillSuccess, setAutofillSuccess] = useState('')
 
   const navigate = useNavigate()
 
@@ -64,89 +45,97 @@ const Login = () => {
     if (error) setError('')
   }
 
-  const handleRoleSelect = (role) => {
-    setFormData((prev) => ({ ...prev, email: role.email }))
-    setError('')
-    setAutofillSuccess(`${role.label} selected — enter your password to continue.`)
-    document.getElementById('password')?.focus()
-  }
-
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setAutofillSuccess('')
 
     try {
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email: formData.email.trim(),
-        password: formData.password,
-      })
+      const { profile } = await signIn(formData.email, formData.password)
 
       setLoading(false)
 
-      if (authError) {
-        setError(authError.message)
+      if (!profile) {
+        setError('No staff profile found for this account. Contact the system administrator.')
         return
       }
 
-      const email = data.user?.email?.toLowerCase()
-
-      if (email === 'cityadministrator@gmail.com') {
-        navigate('/city-administrator')
-      } else if (email === 'cityenro@gmail.com') {
-        navigate('/city-enro')
-      } else if (email === 'swmsecretary@gmail.com') {
-        navigate('/swm-secretary')
-      } else if (email === 'divisions@gmail.com') {
-        navigate('/divisions')
-      } else {
-        navigate('/dashboard')
-      }
+      navigate('/dashboard')
     } catch (err) {
       setLoading(false)
-      setError('An unexpected network error occurred. Please verify your connection.')
+      setError(err?.message || 'An unexpected network error occurred. Please verify your connection.')
     }
   }
 
   return (
-    <div className="login-layout-wrapper">
-      {/* Background decoration matching landing page */}
-      <div className="login-mesh bg-orb-l1"></div>
-      <div className="login-mesh bg-orb-l2"></div>
-      <div className="login-grid-overlay"></div>
+    <div className="login-page">
+      {/* Brand panel */}
+      <aside className="login-brand">
+        <div className="login-brand-bg" />
+        <div className="login-brand-orb orb-a" />
+        <div className="login-brand-orb orb-b" />
 
-      <div className="login-card-container animate-fade-in">
-        <form className="login-form-card" onSubmit={handleSubmit}>
-          {/* Logo Brand Header */}
-          <div className="login-logo-header">
-            <div className="login-logo-icon-box">
-              <Zap className="login-logo-icon" />
+        <button type="button" className="login-back" onClick={() => navigate('/')}>
+          <ArrowLeft className="login-back-icon" />
+          Home
+        </button>
+
+        <div className="login-brand-body">
+          <div className="login-brand-logo">
+            <div className="login-brand-mark">
+              <Zap className="login-brand-mark-icon" />
             </div>
-            <h1 className="login-system-title">TRACKTASK</h1>
+            <span className="login-brand-name">TRACKTASK</span>
           </div>
 
-          <div className="login-subheader">
-            <h2>Welcome Back</h2>
-            <p>Document Tracking With Real-time Notifications</p>
+          <h1 className="login-brand-title">
+            Track every document.<br />
+            <span>In real time.</span><br />
+            <span>Notifications</span>
+          </h1>
+          <p className="login-brand-sub">
+            Document tracking with QR codes and sequential approval routing —
+            built for the City ENRO / SWM workflow.
+          </p>
+
+          <ul className="login-brand-features">
+            {BRAND_FEATURES.map((f) => {
+              const Icon = f.icon
+              return (
+                <li key={f.title} className="login-brand-feature">
+                  <div className="login-brand-feature-icon">
+                    <Icon className="login-brand-feature-svg" />
+                  </div>
+                  <div>
+                    <div className="login-brand-feature-title">{f.title}</div>
+                    <div className="login-brand-feature-text">{f.text}</div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+
+        <div className="login-brand-foot">
+          City of Naga, Cebu · ENRO / SWM document pipeline
+        </div>
+      </aside>
+
+      {/* Form panel */}
+      <main className="login-main">
+        <form className="login-card" onSubmit={handleSubmit}>
+          <div className="login-card-head">
+            <h2>Welcome back</h2>
+            <p>Sign in to your staff workspace</p>
           </div>
 
-          {/* Messages and feedback alerts */}
           {error && (
-            <div className="login-error-alert animate-fade-in">
+            <div className="login-error-alert">
               <ShieldAlert className="alert-icon" />
               <p>{error}</p>
             </div>
           )}
 
-          {autofillSuccess && (
-            <div className="login-success-alert animate-fade-in">
-              <UserCheck className="alert-icon" />
-              <p>{autofillSuccess}</p>
-            </div>
-          )}
-
-          {/* Form Fields */}
           <div className="login-input-group">
             <label htmlFor="email">Email Address</label>
             <div className="input-with-icon">
@@ -165,8 +154,8 @@ const Login = () => {
 
           <div className="login-input-group">
             <div className="label-row">
-              <label htmlFor="password">Security Password</label>
-              <a href="#" className="forgot-password-link">Forgot?</a>
+              <label htmlFor="password">Password</label>
+              <a href="#" className="forgot-password-link">Forgot password?</a>
             </div>
             <div className="input-with-icon">
               <Lock className="field-icon-left" />
@@ -184,6 +173,7 @@ const Login = () => {
                 className="password-toggle-btn"
                 onClick={() => setShowPassword(!showPassword)}
                 tabIndex="-1"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="field-icon-right" /> : <Eye className="field-icon-right" />}
               </button>
@@ -197,37 +187,18 @@ const Login = () => {
           >
             {loading ? (
               <>
-                <Loader2 className="btn-spinner" /> Validating Identity...
+                <Loader2 className="btn-spinner" /> Verifying identity...
               </>
             ) : (
-              'Login'
+              'Sign in'
             )}
           </button>
-        </form>
-      </div>
 
-      {/* Role showcase / quick access */}
-      <div className="role-showcase-wrapper animate-fade-in">
-        <div className="role-showcase-grid">
-          {ROLES.map((role) => {
-            const Icon = role.icon
-            return (
-              <button
-                type="button"
-                key={role.key}
-                className={`role-select-card ${role.accent}`}
-                onClick={() => handleRoleSelect(role)}
-              >
-                <div className="role-icon-box">
-                  <Icon className="role-icon" />
-                </div>
-                <div className="role-title">{role.label}</div>
-                <div className="role-desc">{role.description}</div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
+          <p className="login-card-note">
+            Authorized staff only. Contact your administrator for account access.
+          </p>
+        </form>
+      </main>
     </div>
   )
 }

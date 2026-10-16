@@ -2,6 +2,8 @@ export default function StatusPill({ status }) {
   const map = {
     processing: { bg: "#dbeafe", color: "#1d4ed8", label: "In Progress" },
     completed:  { bg: "#dcfce7", color: "#15803d", label: "Completed"  },
+    returning:  { bg: "#fef3c7", color: "#b45309", label: "Returning"  },
+    done:       { bg: "#dcfce7", color: "#166534", label: "Done"       },
     rejected:   { bg: "#fee2e2", color: "#b91c1c", label: "Rejected"   },
     pending:    { bg: "#fef9c3", color: "#a16207", label: "Pending"    },
   };
