@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Users, Plus, Edit, Trash2, Mail, Shield, Loader2, AlertCircle } from "lucide-react";
+import { Users, Plus, Edit, Trash2, Mail, Shield, Loader2, AlertCircle, UserX, UserCheck } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { ROLES, ROLE_LABELS } from "../../constants";
 import { inp } from "../../utils/styles";
@@ -50,6 +50,8 @@ export default function HRAdmin() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [statusTarget, setStatusTarget] = useState(null);
+  const [holdReason, setHoldReason] = useState("");
 
   function initialForm() {
     return {
@@ -175,8 +177,31 @@ export default function HRAdmin() {
     }
   }
 
-  function getRoleBadgeColor(role) {
-    const colors = {
+  function openStatusChange(profile) {
+    setError("");
+    setHoldReason(profile.hold_reason || "");
+    setStatusTarget({ profile, next: isHeld(profile) ? "active" : "held" });
+  }
+
+  async function confirmStatusChange() {
+    if (!statusTarget) return;
+    setSubmitting(true);
+    try {
+      await adminApi("setStatus", {
+        id: statusTarget.profile.id,
+        status: statusTarget.next,
+        reason: statusTarget.next === "held" ? holdReason.trim() : undefined,
+      });
+      await fetchProfiles();
+    } catch (e) {
+      setError(e.message || "Status change failed.");
+    } finally {
+      setSubmitting(false);
+      setStatusTarget(null);
+    }
+  }
+
+  function getRoleBadgeColor(role) {    const colors = {
       [ROLES.MAYOR]: "#7c3aed",
       [ROLES.CITY_ADMIN]: "#2563eb",
       [ROLES.CITY_ENRO]: "#0d9488",
@@ -222,7 +247,7 @@ export default function HRAdmin() {
         <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Name", "Email", "Role", "Division", "Actions"].map((h) => (
+              {["Name", "Email", "Role", "Division", "Status", "Actions"].map((h) => (
                 <th key={h} style={{ ...td, textAlign: "left", padding: "12px 16px" }}>{h}</th>
               ))}
             </tr>
@@ -230,13 +255,15 @@ export default function HRAdmin() {
           <tbody>
             {profiles.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ ...td, textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                <td colSpan={6} style={{ ...td, textAlign: "center", padding: 40, color: "#94a3b8" }}>
                   No accounts found.
                 </td>
               </tr>
             ) : (
-              profiles.map((p) => (
-                <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9" }}>
+              profiles.map((p) => {
+                const held = isHeld(p);
+                return (
+                <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9", background: held ? "#fef2f2" : undefined }}>
                   <td style={{ ...td, padding: "12px 16px" }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
                   </td>
@@ -258,6 +285,21 @@ export default function HRAdmin() {
                     {p.division || (p.role === ROLES.DIVISION ? "Not assigned" : "—")}
                   </td>
                   <td style={{ ...td, padding: "12px 16px" }}>
+                    <span style={{
+                      display: "inline-block", padding: "4px 10px", borderRadius: 99,
+                      fontSize: 11, fontWeight: 700,
+                      background: held ? "#fee2e2" : "#dcfce7",
+                      color: held ? "#b91c1c" : "#15803d",
+                    }} title={held && p.hold_reason ? p.hold_reason : undefined}>
+                      {held ? "On Hold" : "Active"}
+                    </span>
+                    {held && p.held_at && (
+                      <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
+                        since {new Date(p.held_at).toLocaleDateString("en-PH")}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ ...td, padding: "12px 16px" }}>
                     <div style={{ display: "flex", gap: 8 }}>
                       <button
                         onClick={() => openEdit(p)}
@@ -266,6 +308,17 @@ export default function HRAdmin() {
                         style={{ background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}
                       >
                         <Edit size={14} />
+                      </button>
+                      <button
+                        onClick={() => openStatusChange(p)}
+                        className="tt-mini-btn"
+                        disabled={submitting || p.id === (window.__CURRENT_USER_ID || "")}
+                        title={held ? "Reactivate account" : "Hold / disable sign-in"}
+                        style={held
+                          ? { background: "#dcfce7", color: "#15803d", borderColor: "#bbf7d0" }
+                          : { background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" }}
+                      >
+                        {held ? <UserCheck size={14} /> : <UserX size={14} />}
                       </button>
                       {p.id !== (window.__CURRENT_USER_ID || "") && (
                         <button
@@ -280,7 +333,8 @@ export default function HRAdmin() {
                     </div>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -414,6 +468,73 @@ export default function HRAdmin() {
         </Modal>
       )}
 
+      {statusTarget && (
+        <Modal onClose={() => setStatusTarget(null)} style={{ maxWidth: 440 }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>
+              {statusTarget.next === "held" ? "Hold Account" : "Reactivate Account"}
+            </span>
+          </div>
+          <div style={{ padding: 20, textAlign: "center" }}>
+            {statusTarget.next === "held" ? (
+              <UserX size={48} style={{ color: "#ea580c", marginBottom: 12 }} />
+            ) : (
+              <UserCheck size={48} style={{ color: "#16a34a", marginBottom: 12 }} />
+            )}
+            <p style={{ fontSize: 14, color: "#334155", marginBottom: 8 }}>
+              {statusTarget.next === "held" ? (
+                <>Hold <strong>{statusTarget.profile.full_name}</strong>? They will not be able to sign in.</>
+              ) : (
+                <>Restore sign-in access for <strong>{statusTarget.profile.full_name}</strong>?</>
+              )}
+            </p>
+            <p style={{ fontSize: 12, color: "#64748b", marginBottom: 16 }}>
+              {statusTarget.profile.email}
+            </p>
+
+            {statusTarget.next === "held" && (
+              <div style={{ marginBottom: 16, textAlign: "left" }}>
+                <label style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 5, fontWeight: 600 }}>
+                  Reason (optional)
+                </label>
+                <input
+                  value={holdReason}
+                  onChange={(e) => setHoldReason(e.target.value)}
+                  placeholder="e.g. On leave of absence"
+                  style={inp}
+                />
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setStatusTarget(null)} className="tt-btn-plain" disabled={submitting}>Cancel</button>
+              <button
+                onClick={confirmStatusChange}
+                disabled={submitting}
+                className="tt-btn-primary-lg"
+                style={statusTarget.next === "held"
+                  ? { background: "#ea580c", borderColor: "#ea580c" }
+                  : { background: "#16a34a", borderColor: "#16a34a" }}
+              >
+                {submitting
+                  ? <Loader2 className="animate-spin" size={16} />
+                  : statusTarget.next === "held" ? "Hold Account" : "Reactivate"}
+              </button>
+            </div>
+          </div>
+          <style>{`
+            .tt-btn-plain { padding:7px 14px; border-radius:8px; border:1px solid #e2e8f0;
+              background:#fff; color:#334155; font-size:12px; cursor:pointer; font-family:inherit; }
+            .tt-btn-primary-lg { display:inline-flex; align-items:center; gap:8px; padding:9px 18px;
+              border-radius:10px; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;
+              box-shadow:0 2px 6px rgba(15,23,42,0.2); transition:all .15s; white-space:nowrap; }
+            .tt-btn-primary-lg:disabled { opacity:.6; cursor:not-allowed; box-shadow:none; }
+            .animate-spin { animation: spin 1s linear infinite; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          `}</style>
+        </Modal>
+      )}
+
       {deleteConfirm && (
         <Modal onClose={() => setDeleteConfirm(null)} style={{ maxWidth: 420 }}>
           <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
@@ -453,3 +574,7 @@ export default function HRAdmin() {
 }
 
 const td = { padding: "12px 16px", fontSize: 13, color: "#334155" };
+
+function isHeld(profile) {
+  return profile.status === "held";
+}

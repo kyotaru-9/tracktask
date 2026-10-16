@@ -8,6 +8,12 @@ export async function signIn(email, password) {
   if (error) throw error;
 
   const profile = await getProfileById(data.user.id);
+  if (profile && profile.status === "held") {
+    await supabase.auth.signOut();
+    const err = new Error("This account is on hold. Please contact HR.");
+    err.code = "account_held";
+    throw err;
+  }
   return { user: data.user, profile };
 }
 

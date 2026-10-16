@@ -92,6 +92,38 @@ serve(async (req) => {
         break
       }
 
+      case 'setStatus': {
+        const { id, status, reason } = params
+        if (!['active', 'held'].includes(status)) {
+          throw new Error('status must be "active" or "held"')
+        }
+        if (id === user.id) {
+          throw new Error('You cannot hold your own account')
+        }
+
+        const held = status === 'held'
+
+        const { error } = await supabaseAdmin
+          .from('profiles')
+          .update({
+            status,
+            held_at: held ? new Date().toISOString() : null,
+            held_by: held ? user.id : null,
+            hold_reason: held ? (reason || null) : null,
+          })
+          .eq('id', id)
+        if (error) throw error
+
+        // Mirror the hold on the auth user so sign-in is refused while held.
+        const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(id, {
+          ban_duration: held ? '876000h' : 'none',
+        })
+        if (authError) throw authError
+
+        result = { success: true, status }
+        break
+      }
+
       case 'delete': {
         const { id } = params
         const { error } = await supabaseAdmin.auth.admin.deleteUser(id)
