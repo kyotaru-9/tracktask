@@ -5,7 +5,7 @@ import { trackingUrl } from "../services/appUrl";
 
 // Generates and displays the tracking QR code for a document.
 // Scanning it (or the printed routing slip) opens the public track page.
-export default function QrCodeModal({ doc, onClose }) {
+export default function QrCodeModal({ doc, onClose, onOpenTrack }) {
   const [dataUrl, setDataUrl] = useState("");
 
   const url = trackingUrl(doc.tracking_id);
@@ -58,8 +58,8 @@ export default function QrCodeModal({ doc, onClose }) {
             <Download size={14} /> Download PNG
           </button>
           <button
-            onClick={() => window.open(url, "_blank")}
-            title="Open public tracking page"
+            onClick={() => (onOpenTrack ? onOpenTrack() : window.open(url, "_blank"))}
+            title="Open tracking view"
             className="tt-btn"
           >
             <Printer size={14} /> Open link

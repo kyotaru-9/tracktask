@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, FileText, Clock, Bell, LogOut, Users,
+  LayoutDashboard, FileText, Bell, LogOut, Users, Share2,
+  Plus, AlertTriangle, CheckCircle2, RotateCcw, Clock, Building2,
 } from "lucide-react";
 import useDashboardData from "../../hooks/useDashboardData";
 import { getProfile, signOut, getSession } from "../../services/authService";
@@ -25,6 +26,7 @@ import StatusPill from "../../components/StatusPill";
 import ApprovalSteps from "../../components/ApprovalSteps";
 import DocDetailModal from "../../components/DocDetailModal";
 import NewDocumentModal from "../../components/NewDocumentModal";
+import TrackDocumentModal from "../../components/TrackDocumentModal";
 import { Skeleton, DashboardSkeleton } from "../../components/Skeleton";
 import HRAdmin from "../HRAdmin/HRAdmin";
 
@@ -37,6 +39,9 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [trackDocId, setTrackDocId] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [notifFilter, setNotifFilter] = useState("all");
 
   useEffect(() => {
     let mounted = true;
@@ -59,7 +64,7 @@ export default function Dashboard() {
     return () => { mounted = false; };
   }, [navigate]);
 
-  const { docs, notifications, loading, refreshDocs, refreshNotifications } =
+  const { docs, sharedDocs, notifications, profiles, loading, refreshDocs, refreshNotifications } =
     useDashboardData(profile);
 
   // ── Derived data ──────────────────────────────────────────────────
@@ -79,17 +84,30 @@ export default function Dashboard() {
   const activeCount = docs.filter((d) => d.status === "processing").length;
   const returningCount = docs.filter((d) => d.status === "returning").length;
   const doneCount = docs.filter((d) => d.status === "done").length;
+  const rejectedCount = docs.filter((d) => d.status === "rejected").length;
 
   const filteredDocs = useMemo(() => {
-    if (!search.trim()) return docs;
+    let list = docs;
+    if (statusFilter !== "all") {
+      list = list.filter((d) => d.status === statusFilter);
+    }
+    if (!search.trim()) return list;
     const q = search.toLowerCase();
-    return docs.filter(
+    return list.filter(
       (d) =>
         d.tracking_id.toLowerCase().includes(q) ||
         d.title.toLowerCase().includes(q) ||
         (d.origin || "").toLowerCase().includes(q)
     );
-  }, [docs, search]);
+  }, [docs, search, statusFilter]);
+
+  const STATUS_FILTERS = [
+    { key: "all", label: "All", count: docs.length },
+    { key: "processing", label: "In Progress", count: activeCount },
+    { key: "returning", label: "Returning", count: returningCount },
+    { key: "done", label: "Done", count: doneCount },
+    { key: "rejected", label: "Rejected", count: rejectedCount },
+  ];
 
   const selectedDoc = selectedDocId
     ? docs.find((d) => d.id === selectedDocId) || null
@@ -97,7 +115,7 @@ export default function Dashboard() {
 
   if (!authChecked || !profile) {
     return (
-      <div style={{ minHeight: "100vh", background: "#f1f5f9", padding: "20px 24px", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: "#fff", padding: "20px 24px", fontFamily: "'DM Sans','Segoe UI',sans-serif" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <Skeleton width={240} height={24} radius={8} style={{ marginBottom: 16 }} />
           <DashboardSkeleton />
@@ -125,7 +143,20 @@ export default function Dashboard() {
   }
 
   // ── Table helper ─────────────────────────────────────────────────
-  function renderDocTable(list, showSteps = true) {
+  function renderDocTable(list, showSteps = true, { showTrackId = true } = {}) {
+    // Column widths: give Title enough room so text is not cut off.
+    const colWidths = showSteps
+      ? [110, 210, 120, 80, 110, 140, 100, 55]
+      : [110, 250, 180, 80, 110, 100, 55];
+    const widths = showTrackId
+      ? colWidths
+      : colWidths.slice(1);
+    const minWidth = widths.reduce((a, b) => a + b, 0);
+
+    const headers = ["Track ID", "Title", "Origin", "Urgency", "Deadline",
+      showSteps && "Progress", "Status", "Action"].filter(Boolean);
+    const visibleHeaders = showTrackId ? headers : headers.slice(1);
+
     if (!list.length) {
       return (
         <div style={{ padding: 40, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
@@ -135,16 +166,15 @@ export default function Dashboard() {
     }
     return (
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", minWidth: 860 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", minWidth }}>
           <colgroup>
-            {(showSteps ? [140, null, 160, 100, 170, 210, 120, 70] : [140, null, 170, 100, 170, 120, 70]).map((w, i) => (
-              <col key={i} style={w ? { width: w } : undefined} />
+            {widths.map((w, i) => (
+              <col key={i} style={{ width: w }} />
             ))}
           </colgroup>
           <thead>
             <tr style={{ background: "#f8fafc" }}>
-              {["Track ID", "Title", "Origin", "Urgency", "Deadline",
-                showSteps && "Progress", "Status", ""].filter(Boolean).map((h) => (
+              {visibleHeaders.map((h) => (
                 <th key={h} style={th}>{h}</th>
               ))}
             </tr>
@@ -157,11 +187,11 @@ export default function Dashboard() {
                 onMouseEnter={(e) => (e.currentTarget.style.background = "#f8fafc")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "#fff")}
               >
-                <td style={{ ...td, color: "#2563eb", fontWeight: 600 }}>{d.tracking_id}</td>
+                {showTrackId && <td style={{ ...td, color: "#2563eb", fontWeight: 600 }}>{d.tracking_id}</td>}
                 <td style={{ ...td, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.title}>{d.title}</td>
                 <td style={{ ...td, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.origin}>{d.origin}</td>
                 <td style={td}><UrgencyPill level={d.urgency} /></td>
-                <td style={td}><DeadlineTag deadline={d.deadline} status={d.status} /></td>
+                <td style={td}><DeadlineTag deadline={d.deadline} status={d.status} stacked /></td>
                 {showSteps && <td style={td}><ApprovalSteps doc={d} /></td>}
                 <td style={td}><StatusPill status={d.status} /></td>
                 <td style={td}>
@@ -180,183 +210,635 @@ export default function Dashboard() {
     ? profile.division || "Division"
     : ROLE_LABELS[profile.role] || profile.role;
 
+  const firstName = (() => {
+    const raw = (profile.full_name || profile.email || "").trim();
+    if (!raw) return "";
+    const HONORIFICS = ["hon", "mr", "mrs", "ms", "dr", "atty", "attorney", "sir", "madam"];
+    const parts = raw.split(/\s+/);
+    const first = parts[0].toLowerCase().replace(/\./g, "");
+    if (HONORIFICS.includes(first)) {
+      // Honorific only — use the full name instead of "Hon." / "Dr."
+      return raw;
+    }
+    return parts[0];
+  })();
+  const greeting = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Good morning";
+    if (h < 18) return "Good afternoon";
+    return "Good evening";
+  })();
+
+  const STAT_CARDS = [
+    { label: "Active", value: activeCount, color: "#2563eb", bg: "#eff6ff", icon: FileText, sub: "In the approval pipeline" },
+    { label: "Awaiting You", value: pendingForMe.length, color: "#d97706", bg: "#fffbeb", icon: Clock, sub: "Your turn to review" },
+    { label: "Returning", value: returningCount, color: "#b45309", bg: "#fef3c7", icon: RotateCcw, sub: "Routing back in reverse" },
+    { label: "Completed", value: doneCount, color: "#16a34a", bg: "#f0fdf4", icon: CheckCircle2, sub: "Marked Done" },
+  ];
+
+  const PIPELINE = [
+    { label: "In Progress", value: activeCount, color: "#2563eb" },
+    { label: "Returning", value: returningCount, color: "#d97706" },
+    { label: "Completed", value: doneCount, color: "#16a34a" },
+    { label: "Rejected", value: rejectedCount, color: "#ef4444" },
+  ];
+  const pipelineTotal = PIPELINE.reduce((a, r) => a + r.value, 0);
+
   const dashboardView = (
-    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, alignItems: "start" }}>
-      {/* Left column — 4 stats stacked vertically */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {[
-          { label: "Active Documents", value: activeCount, color: "#2563eb", sub: "In the approval pipeline" },
-          { label: "Awaiting My Action", value: pendingForMe.length, color: "#d97706", sub: "Your turn to review / receive" },
-          { label: "Returning", value: returningCount, color: "#b45309", sub: "Routing back in reverse" },
-          { label: "Completed", value: doneCount, color: "#16a34a", sub: "Marked Done by the Mayor" },
-        ].map((s) => (
-          <div key={s.label} className="tt-stat-card">
-            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>{s.label}</div>
-            <div style={{ fontSize: 28, fontWeight: 700, color: s.color, letterSpacing: "-1px" }}>{s.value}</div>
-            <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{s.sub}</div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* Hero */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.5px" }}>
+            {greeting}, {firstName}
+          </h2>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>
+            {roleTitle} ·{" "}
+            {pendingForMe.length > 0
+              ? `${pendingForMe.length} document${pendingForMe.length > 1 ? "s" : ""} need${pendingForMe.length > 1 ? "" : "s"} your action`
+              : "Nothing needs your action right now"}
+          </p>
+        </div>
+        <button className="tt-btn-primary-lg" onClick={() => setShowNewModal(true)}>
+          <Plus size={15} /> New Document
+        </button>
+      </div>
+
+      {/* Overdue alert */}
+      {overdueCount > 0 && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 10,
+          background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12,
+          padding: "10px 16px", fontSize: 12.5, color: "#b91c1c",
+        }}>
+          <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+          {overdueCount} document{overdueCount > 1 ? "s are" : " is"} past their deadline.
+        </div>
+      )}
+
+      {/* Stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+        {STAT_CARDS.map((s) => (
+          <div key={s.label} className="tt-stat-card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, background: s.bg, color: s.color,
+              display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            }}>
+              <s.icon size={20} />
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: s.color, letterSpacing: "-1px", lineHeight: 1.15 }}>
+                {s.value}
+              </div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: "#0f172a" }}>{s.label}</div>
+              <div style={{ fontSize: 11, color: "#94a3b8" }}>{s.sub}</div>
+            </div>
           </div>
         ))}
       </div>
 
-      {/* Right column — panels */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-        {(pendingForMe.length > 0) && (
-          <div className="tt-panel">
-            <div className="tt-panel-head">
-              <span style={{ fontWeight: 700, fontSize: 14 }}>Documents awaiting you</span>
-              <button className="tt-btn" onClick={() => setActiveView("actions")}>Review all</button>
-            </div>
-            {renderDocTable(pendingForMe.slice(0, 5), false)}
-          </div>
-        )}
+      {/* Body — 60/40 */}
+      <div style={{ display: "grid", gridTemplateColumns: "3fr 2fr", gap: 16, alignItems: "start" }}>
 
+        {/* Awaiting your action */}
         <div className="tt-panel">
           <div className="tt-panel-head">
-            <span style={{ fontWeight: 700, fontSize: 14 }}>Recent Documents</span>
-            <button className="tt-btn" onClick={() => setActiveView("documents")}>View all</button>
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Awaiting your action</span>
+            {pendingForMe.length > 0 && <span className="tt-badge danger">{pendingForMe.length}</span>}
           </div>
-          {renderDocTable(docs.slice(0, 5), false)}
+          {pendingForMe.length === 0 ? (
+            <div style={{ padding: 36, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+              <CheckCircle2 size={28} style={{ color: "#86efac", marginBottom: 8 }} />
+              <div>Nothing needs your action right now.</div>
+            </div>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {pendingForMe.slice(0, 5).map((d) => (
+                <li
+                  key={d.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 14,
+                    padding: "12px 16px", borderBottom: "1px solid #f1f5f9",
+                  }}
+                >
+                  <div style={{
+                    width: 34, height: 34, borderRadius: 10, flexShrink: 0,
+                    background: d.phase === "reverse" ? "#fef3c7" : "#eff6ff",
+                    color: d.phase === "reverse" ? "#b45309" : "#1d4ed8",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    {d.phase === "reverse" ? <RotateCcw size={16} /> : <Clock size={16} />}
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13.5, fontWeight: 600, color: "#0f172a",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }} title={d.title}>
+                      {d.title}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
+                      <span style={{ fontSize: 11, color: "#2563eb", fontWeight: 600 }}>{d.tracking_id}</span>
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>·</span>
+                      <span style={{
+                        fontSize: 11, color: "#64748b",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160,
+                      }} title={d.origin}>
+                        {d.origin}
+                      </span>
+                      <UrgencyPill level={d.urgency} />
+                    </div>
+                  </div>
+
+                  <DeadlineTag deadline={d.deadline} status={d.status} />
+                  <button className="tt-view-btn" onClick={() => setSelectedDocId(d.id)}>Review</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {pendingForMe.length > 5 && (
+            <button
+              onClick={() => setActiveView("documents")}
+              style={{
+                width: "100%", padding: "10px 16px", border: "none",
+                borderTop: "1px solid #f1f5f9", background: "#fff",
+                fontSize: 12.5, fontWeight: 600, color: "#2563eb",
+                cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+              }}
+            >
+              more... ({pendingForMe.length - 5} more)
+            </button>
+          )}
         </div>
 
-        {overdueCount > 0 && (
-          <div style={{
-            background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 12,
-            padding: "10px 16px", fontSize: 12.5, color: "#b91c1c",
-          }}>
-            {overdueCount} document{overdueCount > 1 ? "s are" : " is"} past their deadline.
+        {/* Right column */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+
+          {/* Recent documents */}
+          <div className="tt-panel">
+            <div className="tt-panel-head">
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Recent documents</span>
+              <button className="tt-btn" onClick={() => setActiveView("documents")}>View all</button>
+            </div>
+            {docs.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                No documents yet.
+              </div>
+            ) : (
+              <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+                {docs.slice(0, 5).map((d) => (
+                  <li
+                    key={d.id}
+                    onClick={() => setSelectedDocId(d.id)}
+                    style={{
+                      padding: "11px 16px", borderBottom: "1px solid #f1f5f9",
+                      cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                    }}
+                  >
+                    <FileText size={15} style={{ color: "#94a3b8", flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{
+                        fontSize: 13, fontWeight: 500, color: "#0f172a",
+                        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }} title={d.title}>
+                        {d.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                        {d.tracking_id} · {new Date(d.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}
+                      </div>
+                    </div>
+                    <StatusPill status={d.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+            {docs.length > 5 && (
+              <button
+                onClick={() => setActiveView("documents")}
+                style={{
+                  width: "100%", padding: "10px 16px", border: "none",
+                  borderTop: "1px solid #f1f5f9", background: "#fff",
+                  fontSize: 12.5, fontWeight: 600, color: "#2563eb",
+                  cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                }}
+              >
+                more... ({docs.length - 5} more)
+              </button>
+            )}
           </div>
-        )}
+
+          {/* Pipeline breakdown */}
+          <div className="tt-panel">
+            <div className="tt-panel-head">
+              <span style={{ fontWeight: 700, fontSize: 14 }}>Pipeline</span>
+            </div>
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 13 }}>
+              {PIPELINE.map((r) => (
+                <div key={r.label}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 5 }}>
+                    <span style={{ color: "#475569", fontWeight: 500 }}>{r.label}</span>
+                    <span style={{ color: "#0f172a", fontWeight: 700 }}>{r.value}</span>
+                  </div>
+                  <div style={{ height: 6, background: "#f1f5f9", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{
+                      height: "100%",
+                      width: `${pipelineTotal ? (r.value / pipelineTotal) * 100 : 0}%`,
+                      background: r.color, borderRadius: 99,
+                      transition: "width .3s ease",
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 
   const documentsView = (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>
-          Documents ({filteredDocs.length})
-        </span>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Toolbar */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.3px" }}>
+            Documents
+          </h2>
+          <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "#64748b" }}>
+            {filteredDocs.length} of {docs.length} document{docs.length === 1 ? "" : "s"}
+            {statusFilter !== "all" && ` · ${STATUS_FILTERS.find((f) => f.key === statusFilter)?.label}`}
+          </p>
+        </div>
         <button className="tt-btn-primary-lg" onClick={() => setShowNewModal(true)}>
-          + Add Document
+          <Plus size={15} /> Add Document
         </button>
       </div>
-      {/* Full-bleed table: breaks out of the content padding to occupy the entire width */}
-      <div style={{ margin: "0 -24px", borderTop: "1px solid #e2e8f0" }}>
-        {renderDocTable(filteredDocs)}
+
+      {/* Status filter chips */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {STATUS_FILTERS.map((f) => {
+          const active = statusFilter === f.key;
+          return (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 7,
+                padding: "6px 13px", borderRadius: 99,
+                border: `1px solid ${active ? "#2563eb" : "#e2e8f0"}`,
+                background: active ? "#eff6ff" : "#fff",
+                color: active ? "#1d4ed8" : "#64748b",
+                fontSize: 12, fontWeight: active ? 700 : 500,
+                cursor: "pointer", fontFamily: "inherit", transition: "all .15s",
+              }}
+            >
+              {f.label}
+              <span style={{
+                fontSize: 10.5, fontWeight: 700,
+                background: active ? "#2563eb" : "#f1f5f9",
+                color: active ? "#fff" : "#64748b",
+                borderRadius: 99, padding: "1px 6px", minWidth: 18, textAlign: "center",
+              }}>
+                {f.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 50/50 split — main table left, pending actions right */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+        {/* Left — main documents table */}
+        <div style={{ borderTop: "1px solid #e2e8f0" }}>
+          {renderDocTable(filteredDocs, false, { showTrackId: false })}
+        </div>
+
+        {/* Right — only the documents that require the user's action */}
+        <div className="tt-panel">
+          <div className="tt-panel-head">
+            <span style={{ fontWeight: 700, fontSize: 14 }}>Pending Actions</span>
+            {pendingForMe.length > 0 && (
+              <span className="tt-badge danger">{pendingForMe.length}</span>
+            )}
+          </div>
+          {pendingForMe.length === 0 ? (
+            <div style={{ padding: 28, textAlign: "center", color: "#94a3b8", fontSize: 12.5 }}>
+              No documents require your action right now.
+            </div>
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: 0, maxHeight: "calc(100vh - 260px)", overflowY: "auto" }}>
+              {pendingForMe.map((d) => (
+                <li
+                  key={d.id}
+                  style={{
+                    padding: "12px 14px",
+                    borderBottom: "1px solid #f1f5f9",
+                    background: "#fff",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "#2563eb", cursor: "pointer" }} onClick={() => setSelectedDocId(d.id)}>
+                      {d.tracking_id}
+                    </span>
+                    <UrgencyPill level={d.urgency} />
+                  </div>
+                  <div
+                    onClick={() => setSelectedDocId(d.id)}
+                    style={{
+                      fontSize: 13, fontWeight: 600, color: "#0f172a", cursor: "pointer",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+                    }}
+                    title={d.title}
+                  >
+                    {d.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.origin}>
+                    {d.origin}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                    <DeadlineTag deadline={d.deadline} status={d.status} />
+                    <span style={{
+                      fontSize: 10, fontWeight: 600, borderRadius: 99, padding: "2px 8px",
+                      background: d.phase === "reverse" ? "#fef3c7" : "#dbeafe",
+                      color: d.phase === "reverse" ? "#b45309" : "#1d4ed8",
+                    }}>
+                      {d.phase === "reverse" ? "Return leg" : "Forward leg"}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
+                    <button
+                      className="tt-view-btn"
+                      onClick={() => setSelectedDocId(d.id)}
+                    >
+                      Review
+                    </button>
+                    <button
+                      className="tt-view-btn"
+                      onClick={() => setTrackDocId(d.tracking_id)}
+                    >
+                      Open
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );
 
-  const actionsView = (
-    <div style={{ display: "flex", flexDirection: "column" }}>
-      <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b", paddingBottom: 12 }}>
-        Awaiting my action — {roleTitle}
-      </span>
-      {pendingForMe.length === 0 ? (
-        <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
-          No documents are waiting for you right now.
+  const notificationsView = (() => {
+    const visible = notifFilter === "unread"
+      ? notifications.filter((n) => !n.is_read)
+      : notifications;
+
+    // Group by Today / Yesterday / Earlier
+    const groups = [];
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfYesterday = new Date(startOfToday.getTime() - 86400000);
+    const buckets = [
+      { title: "Today", from: startOfToday.getTime() },
+      { title: "Yesterday", from: startOfYesterday.getTime(), to: startOfToday.getTime() },
+      { title: "Earlier", to: startOfYesterday.getTime() },
+    ];
+    buckets.forEach((b) => {
+      const items = visible.filter((n) => {
+        const t = new Date(n.created_at).getTime();
+        if (b.from && t < b.from) return false;
+        if (b.to && t >= b.to) return false;
+        return true;
+      });
+      if (items.length) groups.push({ title: b.title, items });
+    });
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.3px" }}>
+              Notifications
+            </h2>
+            <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "#64748b" }}>
+              {newNotifCount > 0
+                ? `${newNotifCount} unread`
+                : "You're all caught up"}
+            </p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "inline-flex", padding: 3, background: "#f1f5f9", borderRadius: 9 }}>
+              {[
+                { key: "all", label: "All" },
+                { key: "unread", label: `Unread${newNotifCount ? ` (${newNotifCount})` : ""}` },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setNotifFilter(t.key)}
+                  style={{
+                    padding: "5px 13px", border: "none", borderRadius: 7,
+                    background: notifFilter === t.key ? "#fff" : "transparent",
+                    color: notifFilter === t.key ? "#0f172a" : "#64748b",
+                    fontSize: 12, fontWeight: notifFilter === t.key ? 700 : 500,
+                    cursor: "pointer", fontFamily: "inherit",
+                    boxShadow: notifFilter === t.key ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {newNotifCount > 0 && (
+              <button className="tt-btn" onClick={handleMarkAllRead}>Mark all read</button>
+            )}
+          </div>
+        </div>
+
+        {visible.length === 0 ? (
+          <div className="tt-panel">
+            <div style={{ padding: 56, textAlign: "center", color: "#94a3b8" }}>
+              <Bell size={30} style={{ marginBottom: 10, opacity: 0.6 }} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b" }}>
+                {notifFilter === "unread" ? "No unread notifications" : "No notifications yet"}
+              </div>
+              <div style={{ fontSize: 12.5, marginTop: 4 }}>
+                Activity on your documents will show up here.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {groups.map((g) => (
+              <div key={g.title} className="tt-panel">
+                <div className="tt-panel-head">
+                  <span style={{ fontWeight: 700, fontSize: 13 }}>{g.title}</span>
+                  <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{g.items.length}</span>
+                </div>
+                {g.items.map((n) => {
+                  const tone = n.dot || "#2563eb";
+                  return (
+                    <div
+                      key={n.id}
+                      onClick={async () => {
+                        if (!n.is_read) {
+                          await markNotificationRead(n.id, profile.id);
+                          await refreshNotifications();
+                        }
+                        if (n.document_id) setSelectedDocId(n.document_id);
+                      }}
+                      style={{
+                        display: "flex", gap: 12, padding: "13px 16px",
+                        borderBottom: "1px solid #f1f5f9", alignItems: "flex-start",
+                        cursor: n.document_id ? "pointer" : "default",
+                        background: n.is_read ? "#fff" : "#f8fbff",
+                      }}
+                    >
+                      <div style={{
+                        width: 30, height: 30, borderRadius: 9, flexShrink: 0,
+                        background: `${tone}1a`, color: tone,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        <Bell size={14} />
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.5, fontWeight: n.is_read ? 400 : 500 }}>
+                          {n.message}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 3 }}>
+                          {new Date(n.created_at).toLocaleString("en-PH", {
+                            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                          })}
+                        </div>
+                      </div>
+                      {!n.is_read && (
+                        <span style={{
+                          width: 8, height: 8, borderRadius: "50%", background: "#2563eb",
+                          flexShrink: 0, marginTop: 5,
+                        }} title="Unread" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  })();
+
+  const sharedView = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: "#0f172a", letterSpacing: "-0.3px" }}>
+          Shared with Me
+        </h2>
+        <p style={{ margin: "3px 0 0", fontSize: 12.5, color: "#64748b" }}>
+          {sharedDocs.length} document{sharedDocs.length === 1 ? "" : "s"} shared with you by your colleagues
+        </p>
+      </div>
+
+      {sharedDocs.length === 0 ? (
+        <div className="tt-panel">
+          <div style={{ padding: 56, textAlign: "center", color: "#94a3b8" }}>
+            <Share2 size={30} style={{ marginBottom: 10, opacity: 0.6 }} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: "#64748b" }}>No documents shared with you yet</div>
+            <div style={{ fontSize: 12.5, marginTop: 4 }}>
+              When a colleague shares a document, it will appear here.
+            </div>
+          </div>
         </div>
       ) : (
-        /* Full-bleed table: breaks out of the content padding to occupy the entire width */
-        <div style={{ margin: "0 -24px", borderTop: "1px solid #e2e8f0", overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed", minWidth: 820 }}>
-            <colgroup>
-              {[140, null, 110, 100, 170, 120, 70].map((w, i) => (
-                <col key={i} style={w ? { width: w } : undefined} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr style={{ background: "#f8fafc" }}>
-                {["Track ID", "Title", "Type", "Urgency", "Deadline", "Phase", "Actions"].map((h) => (
-                  <th key={h} style={th}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pendingForMe
-                .slice()
-                .sort((a, b) => {
-                  const order = { Critical: 0, High: 1, Normal: 2, Low: 3 };
-                  return (order[a.urgency] ?? 2) - (order[b.urgency] ?? 2);
-                })
-                .map((d) => (
-                  <tr key={d.id} style={{ borderBottom: "1px solid #f1f5f9", background: "#fff" }}>
-                    <td style={{ ...td, color: "#2563eb", fontWeight: 600, cursor: "pointer" }}
-                      onClick={() => setSelectedDocId(d.id)}>
-                      {d.tracking_id}
-                    </td>
-                    <td style={{ ...td, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.title}>{d.title}</td>
-                    <td style={td}>{d.doc_type}</td>
-                    <td style={td}><UrgencyPill level={d.urgency} /></td>
-                    <td style={td}><DeadlineTag deadline={d.deadline} status={d.status} /></td>
-                    <td style={td}>
-                      <span style={{
-                        fontSize: 11, fontWeight: 600, borderRadius: 99, padding: "2px 10px",
-                        background: d.phase === "reverse" ? "#fef3c7" : "#dbeafe",
-                        color: d.phase === "reverse" ? "#b45309" : "#1d4ed8",
-                      }}>
-                        {d.phase === "reverse" ? "Return leg" : "Forward leg"}
-                      </span>
-                    </td>
-                    <td style={td}>
-                      <button className="tt-view-btn" onClick={() => setSelectedDocId(d.id)}>Open</button>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 16 }}>
+          {sharedDocs.map((d) => (
+            <div key={d.id} className="tt-panel" style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+                  background: "#eff6ff", color: "#2563eb",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <FileText size={17} />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{
+                    fontSize: 13.5, fontWeight: 700, color: "#0f172a", lineHeight: 1.35,
+                    overflow: "hidden", textOverflow: "ellipsis", display: "-webkit-box",
+                    WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+                  }} title={d.title}>
+                    {d.title}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#2563eb", fontWeight: 600, marginTop: 2 }}>{d.tracking_id}</div>
+                </div>
+              </div>
+
+              <div style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 6 }}>
+                <Building2 size={12} style={{ flexShrink: 0, color: "#94a3b8" }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.origin}>{d.origin}</span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <StatusPill status={d.status} />
+                <UrgencyPill level={d.urgency} />
+                <DeadlineTag deadline={d.deadline} status={d.status} />
+              </div>
+
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8, padding: "8px 10px",
+                background: "#f8fafc", borderRadius: 9, border: "1px solid #f1f5f9",
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                  background: "#dbeafe", color: "#1d4ed8",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700,
+                }}>
+                  {(d.shared_by?.full_name || d.shared_by?.email || "?").charAt(0).toUpperCase()}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontSize: 11.5, fontWeight: 600, color: "#334155",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }} title={d.shared_by?.full_name || d.shared_by?.email}>
+                    {d.shared_by?.full_name || d.shared_by?.email}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: "#94a3b8" }}>
+                    Shared {d.share_created_at ? new Date(d.share_created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : ""}
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
+                <button className="tt-view-btn" style={{ flex: 1 }} onClick={() => setSelectedDocId(d.id)}>View</button>
+                <button className="tt-view-btn" style={{ flex: 1 }} onClick={() => setTrackDocId(d.tracking_id)}>Open</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 
-  const notificationsView = (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "#64748b" }}>Notifications</span>
-        <button className="tt-btn" onClick={handleMarkAllRead}>Mark all read</button>
-      </div>
-      <div className="tt-panel">
-        {notifications.length === 0 ? (
-          <div style={{ padding: 40, textAlign: "center", color: "#64748b" }}>No notifications yet.</div>
-        ) : notifications.map((n) => (
-          <div key={n.id}
-            onClick={async () => {
-              if (!n.is_read) {
-                await markNotificationRead(n.id, profile.id);
-                await refreshNotifications();
-              }
-              if (n.document_id) setSelectedDocId(n.document_id);
-            }}
-            style={{
-              display: "flex", gap: 10, padding: "12px 16px",
-              borderBottom: "1px solid #f1f5f9", alignItems: "flex-start",
-              cursor: n.document_id ? "pointer" : "default",
-              background: n.is_read ? "transparent" : "#eff6ff",
-            }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: n.dot, marginTop: 5, flexShrink: 0 }} />
-            <div>
-              <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                {new Date(n.created_at).toLocaleString("en-PH", {
-                  month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-                })}
-                {!n.is_read && <span style={{ color: "#2563eb", fontWeight: 600 }}> · New</span>}
-              </div>
-              <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.5 }}>{n.message}</div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
   // ── Layout ───────────────────────────────────────────────────────
-  const navItems = [
-    { key: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    { key: "documents", icon: FileText, label: "Documents" },
-    { key: "actions", icon: Clock, label: "Pending Actions", badge: pendingForMe.length },
-    { key: "notifications", icon: Bell, label: "Notifications", badge: newNotifCount },
-    ...(profile?.role === ROLES.HR ? [{ key: "hradmin", icon: Users, label: "HR Admin" }] : []),
+  const navGroups = [
+    {
+      title: "Workspace",
+      items: [
+        { key: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
+        { key: "documents", icon: FileText, label: "Documents" },
+      ],
+    },
+    {
+      title: "Collaborate",
+      items: [
+        { key: "shared", icon: Share2, label: "Shared with Me" },
+        { key: "notifications", icon: Bell, label: "Notifications", badge: newNotifCount, badgeTone: "danger" },
+      ],
+    },
+    ...(profile?.role === ROLES.HR
+      ? [{ title: "Administration", items: [{ key: "hradmin", icon: Users, label: "HR Admin" }] }]
+      : []),
   ];
 
   return (
@@ -365,26 +847,32 @@ export default function Dashboard() {
         <div className="tt-brand">
           <div className="tt-logo">T</div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 16, color: "#0f172a", letterSpacing: "0.5px" }}>Tracktask</div>
+            <div className="tt-logo-brand">Tracktask</div>
             <div className="tt-role-pill">{roleTitle}</div>
           </div>
         </div>
 
         <nav style={{ flex: 1 }}>
-          <div className="tt-nav-section">Menu</div>
-          {navItems.map(({ key, icon: Icon, label, badge }) => (
-            <button key={key}
-              className={"tt-nav-item" + (activeView === key ? " active" : "")}
-              onClick={() => setActiveView(key)}>
-              <span className="tt-nav-icon"><Icon size={16} /></span>
-              <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
-              {badge > 0 && (
-                <span className={"tt-badge" + (key === "actions" ? " danger" : "")}>{badge}</span>
-              )}
-            </button>
+          {navGroups.map((group) => (
+            <div key={group.title} style={{ marginBottom: 18 }}>
+              <div className="tt-nav-section">{group.title}</div>
+              {group.items.map(({ key, icon: Icon, label, badge, badgeTone }) => (
+                <button key={key}
+                  className={"tt-nav-item" + (activeView === key ? " active" : "")}
+                  onClick={() => setActiveView(key)}
+                >
+                  <span className="tt-nav-icon"><Icon size={16} /></span>
+                  <span style={{ flex: 1, textAlign: "left" }}>{label}</span>
+                  {badge > 0 && <span className={"tt-badge" + (badgeTone ? " " + badgeTone : "")}>{badge}</span>}
+                </button>
+              ))}
+            </div>
           ))}
+
+          <div className="tt-nav-section">Account</div>
           <button className="tt-nav-item tt-logout" onClick={async () => { await signOut(); navigate("/login"); }}>
-            <span className="tt-nav-icon"><LogOut size={16} /></span><span style={{ textAlign: "left" }}>Logout</span>
+            <span className="tt-nav-icon"><LogOut size={16} /></span>
+            <span style={{ textAlign: "left" }}>Sign out</span>
           </button>
         </nav>
 
@@ -392,19 +880,16 @@ export default function Dashboard() {
           <div className="tt-user-avatar">
             {(profile.full_name || profile.email || "?").charAt(0).toUpperCase()}
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span className="tt-online-dot" />
-              <span style={{ fontSize: 10, color: "#2563eb", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Logged in
-              </span>
-            </div>
-            <div style={{ fontSize: 12.5, color: "#0f172a", fontWeight: 600, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {profile.full_name || profile.email}
             </div>
-            {profile.role === ROLES.DIVISION && (
-              <div style={{ fontSize: 11, color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{profile.division}</div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 3 }}>
+              <span className="tt-online-dot" />
+              <span style={{ fontSize: 10.5, color: "#64748b", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {profile.role === ROLES.DIVISION ? profile.division : profile.role}
+              </span>
+            </div>
           </div>
         </div>
       </aside>
@@ -420,12 +905,14 @@ export default function Dashboard() {
             </p>
           </div>
 
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by Track ID, title, or origin..."
-            className="tt-search"
-          />
+          {activeView === "documents" && (
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by Track ID, title, or origin..."
+              className="tt-search"
+            />
+          )}
 
           <button className="tt-bell" onClick={() => setActiveView("notifications")}>
             <Bell size={18} />
@@ -441,7 +928,7 @@ export default function Dashboard() {
           {loading && <DashboardSkeleton />}
           {!loading && activeView === "dashboard" && dashboardView}
           {!loading && activeView === "documents" && documentsView}
-          {!loading && activeView === "actions" && actionsView}
+          {!loading && activeView === "shared" && sharedView}
           {!loading && activeView === "notifications" && notificationsView}
           {!loading && activeView === "hradmin" && <HRAdmin />}
         </div>
@@ -461,46 +948,59 @@ export default function Dashboard() {
           onClose={() => setShowNewModal(false)}
           onSubmit={handleSubmitDoc}
           creatorProfile={profile}
+          profiles={profiles}
+        />
+      )}
+
+      {trackDocId && (
+        <TrackDocumentModal
+          onClose={() => setTrackDocId(null)}
+          initialId={trackDocId}
         />
       )}
 
       <style>{`
         .tt-shell { display:flex; height:100vh; font-family:'DM Sans','Segoe UI',sans-serif;
-          background:#f1f5f9; color:#1e293b; overflow:hidden; }
-        .tt-sidebar { width:248px; background:#fff; border-right:1px solid #e2e8f0;
-          display:flex; flex-direction:column; padding:22px 14px 16px; flex-shrink:0; overflow-y:auto; }
-        .tt-brand { display:flex; align-items:center; gap:12px; padding:0 10px 20px;
-          border-bottom:1px solid #f1f5f9; margin-bottom:12px; }
-        .tt-logo { width:42px; height:42px; background:linear-gradient(135deg,#2563eb,#1d4ed8);
-          border-radius:12px; color:#fff; display:flex; align-items:center; justify-content:center;
+          background:#fff; color:#1e293b; overflow:hidden; }
+        .tt-sidebar { width:256px; background:#fff; border-right:1px solid #e2e8f0;
+          display:flex; flex-direction:column; padding:20px 14px 14px; flex-shrink:0; overflow-y:auto; }
+        .tt-brand { display:flex; align-items:center; gap:12px; padding:0 8px 18px;
+          border-bottom:1px solid #f1f5f9; margin-bottom:18px; }
+        .tt-logo { width:40px; height:40px; background:linear-gradient(135deg,#2563eb,#1d4ed8);
+          border-radius:11px; color:#fff; display:flex; align-items:center; justify-content:center;
           font-weight:800; font-size:17px; box-shadow:0 4px 12px rgba(37,99,235,0.3); flex-shrink:0; }
+        .tt-logo-brand { font-weight:800; font-size:15.5px; color:#0f172a; letter-spacing:"0.3px"; }
         .tt-role-pill { display:inline-block; margin-top:4px; font-size:10px; font-weight:700;
           letter-spacing:0.4px; color:#1d4ed8; background:#eff6ff;
           border:1px solid #bfdbfe; border-radius:99px; padding:2px 9px;
           max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-        .tt-nav-section { font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
-          color:#94a3b8; padding:4px 12px 8px; }
+        .tt-nav-section { font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+          color:#94a3b8; padding:0 10px 7px; }
         .tt-nav-item { display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px;
           margin-bottom:2px; border:none; background:transparent; color:#64748b; cursor:pointer;
-          font-size:13px; font-family:inherit; text-align:left; border-radius:10px; transition:all .15s; }
-        .tt-nav-item:hover { background:#f1f5f9; color:#0f172a; }
+          font-size:13px; font-family:inherit; text-align:left; border-radius:9px; transition:all .15s;
+          position:relative; }
+        .tt-nav-item:hover { background:#f8fafc; color:#0f172a; }
         .tt-nav-item.active { background:#eff6ff; color:#1d4ed8; font-weight:600; }
-        .tt-nav-icon { width:30px; height:30px; border-radius:8px; display:flex; align-items:center;
-          justify-content:center; background:#f1f5f9; color:#64748b; flex-shrink:0; transition:all .15s; }
-        .tt-nav-item:hover .tt-nav-icon { background:#e2e8f0; color:#0f172a; }
-        .tt-nav-item.active .tt-nav-icon { background:#2563eb; color:#fff; }
-        .tt-nav-item.tt-logout { margin-top:10px; color:#b91c1c; }
+        .tt-nav-item.active::before { content:""; position:absolute; left:-14px; top:50%;
+          transform:translateY(-50%); width:3px; height:20px; background:#2563eb; border-radius:0 3px 3px 0; }
+        .tt-nav-icon { width:28px; height:28px; border-radius:8px; display:flex; align-items:center;
+          justify-content:center; color:#94a3b8; flex-shrink:0; transition:all .15s; }
+        .tt-nav-item:hover .tt-nav-icon { color:#475569; }
+        .tt-nav-item.active .tt-nav-icon { color:#2563eb; }
+        .tt-nav-item.tt-logout { margin-top:4px; color:#b91c1c; }
         .tt-nav-item.tt-logout:hover { background:#fef2f2; color:#b91c1c; }
-        .tt-nav-item.tt-logout .tt-nav-icon { background:#fef2f2; color:#b91c1c; }
+        .tt-nav-item.tt-logout .tt-nav-icon { color:#b91c1c; }
+        .tt-nav-item.tt-logout:hover .tt-nav-icon { color:#b91c1c; }
         .tt-badge { background:#2563eb; color:#fff; border-radius:99px; font-size:10px; font-weight:700;
           padding:1px 7px; min-width:18px; text-align:center; }
         .tt-badge.danger { background:#ef4444; }
-        .tt-user-chip { margin:14px 2px 0; padding:12px; background:#f8fafc;
+        .tt-user-chip { margin:14px 0 0; padding:11px 12px; background:#f8fafc;
           border-radius:12px; border:1px solid #e2e8f0; display:flex; gap:10px; align-items:center; }
-        .tt-user-avatar { width:36px; height:36px; border-radius:50%; flex-shrink:0;
-          background:#2563eb; color:#fff;
-          display:flex; align-items:center; justify-content:center; font-weight:700; font-size:14px; }
-        .tt-online-dot { width:7px; height:7px; border-radius:50%; background:#16a34a; }
+        .tt-user-avatar { width:34px; height:34px; border-radius:50%; flex-shrink:0;
+          background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff;
+          display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; }
+        .tt-online-dot { width:7px; height:7px; border-radius:50%; background:#16a34a; flex-shrink:0; }
         .tt-topbar { background:#fff; border-bottom:1px solid #e2e8f0; padding:12px 24px; display:flex;
           align-items:center; gap:12px; box-shadow:0 1px 4px rgba(0,0,0,0.04); flex-shrink:0; }
         .tt-search { padding-left:32px; padding-right:14px; padding-top:7px; padding-bottom:7px;

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, Send, Upload, QrCode, Download } from 'lucide-react'
+import TrackDocumentModal from '../../components/TrackDocumentModal'
 import './RequestDocument.css'
 
 const generateTrackingId = () => {
@@ -26,6 +27,7 @@ const RequestDocumentPage = () => {
   })
   const [generated, setGenerated] = useState(false)
   const [trackingId, setTrackingId] = useState('')
+  const [showTrackModal, setShowTrackModal] = useState(false)
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -329,7 +331,7 @@ const RequestDocumentPage = () => {
                     <Download className="page-submit-icon" />
                     Download QR Code
                   </button>
-                  <button type="button" className="page-submit-btn" onClick={() => navigate('/track-documents')}>
+                  <button type="button" className="page-submit-btn" onClick={() => setShowTrackModal(true)}>
                     <Send className="page-submit-icon" />
                     Track Document
                   </button>
@@ -339,6 +341,13 @@ const RequestDocumentPage = () => {
           </section>
         </div>
       </div>
+
+      {showTrackModal && (
+        <TrackDocumentModal
+          onClose={() => setShowTrackModal(false)}
+          initialId={trackingId || null}
+        />
+      )}
     </div>
   )
 }

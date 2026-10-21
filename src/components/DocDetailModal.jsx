@@ -1,14 +1,18 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
-import { Trash2, AlertCircle, Download } from "lucide-react";
+import { Trash2, AlertCircle, Download, Share2, X } from "lucide-react";
 import Modal from "./Modal";
 import StatusPill from "./StatusPill";
 import UrgencyPill from "./UrgencyPill";
 import DeadlineTag from "./DeadlineTag";
 import QrCodeModal from "./QrCodeModal";
 import AuditLog from "./AuditLog";
-import { isMyTurn, stepLabel, fetchAuditLogs, getAttachmentUrl, deleteDocument, ROLES } from "../services/documentService";
+import { isMyTurn, stepLabel, fetchAuditLogs, getAttachmentUrl, deleteDocument, updateDocument, shareDocument, unshareDocument, fetchDocumentShares, ROLES } from "../services/documentService";
+import { supabase } from "../services/supabaseClient";
 import { trackingUrl } from "../services/appUrl";
+import { inp } from "../utils/styles";
+import NewDocumentModal from "./NewDocumentModal";
+import TrackDocumentModal from "./TrackDocumentModal";
 
 const STEP_STYLE = {
   approved: { bg: "#f0fdf4", dot: "#16a34a", icon: "OK", hint: "Approved" },
@@ -25,6 +29,13 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [attachmentUrl, setAttachmentUrl] = useState("");
   const [attachmentMissing, setAttachmentMissing] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showShare, setShowShare] = useState(false);
+  const [showTrack, setShowTrack] = useState(false);
+  const [shares, setShares] = useState([]);
+  const [shareSearch, setShareSearch] = useState("");
+  const [shareResults, setShareResults] = useState([]);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const trackUrl = trackingUrl(doc.tracking_id);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -40,6 +51,7 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
       .catch((e) => console.error("QR generation failed:", e));
 
     fetchAuditLogs(doc.id).then((logs) => mounted && setAuditLogs(logs));
+    fetchDocumentShares(doc.id).then((s) => mounted && setShares(s));
 
     if (doc.attachment) {
       getAttachmentUrl(doc.attachment)
@@ -54,6 +66,17 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
 
   const canDelete = profile && [ROLES.MAYOR, ROLES.CITY_ADMIN].includes(profile.role);
 
+  const canEdit =
+    profile &&
+    doc.created_by === profile.id &&
+    doc.current_step === 0 &&
+    doc.phase === "forward" &&
+    doc.steps?.[0]?.status === "pending";
+
+  const canEditRoute = profile && (profile.role === ROLES.MAYOR || profile.role === ROLES.CITY_ADMIN);
+
+  const canShare = profile && (doc.created_by === profile.id || shares.some(s => s.shared_by === profile.id));
+
   async function handleDelete() {
     setBusy(true);
     setError("");
@@ -65,6 +88,19 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
     } finally {
       setBusy(false);
       setShowDeleteConfirm(false);
+    }
+  }
+
+  async function handleEditSubmit(form, route) {
+    setBusy(true);
+    setError("");
+    try {
+      await updateDocument(doc.id, form, route, profile);
+      onClose();
+    } catch (e) {
+      setError(e.message || "Edit failed.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -85,6 +121,59 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
       onClose();
     } catch (e) {
       setError(e.message || "Action failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function searchUsers(query) {
+    if (!query.trim() || query.length < 2) {
+      setShareResults([]);
+      return;
+    }
+    setShareLoading(true);
+    try {
+      const { data } = await supabase
+        .from("profiles")
+        .select("id, full_name, email, role, division")
+        .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
+        .neq("id", profile.id)
+        .limit(10);
+      setShareResults(data || []);
+    } catch (e) {
+      console.error("User search failed:", e);
+      setShareResults([]);
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
+  async function handleShare(userId) {
+    setBusy(true);
+    setError("");
+    try {
+      await shareDocument(doc.id, userId, profile);
+      setShowShare(false);
+      setShareSearch("");
+      setShareResults([]);
+      const updated = await fetchDocumentShares(doc.id);
+      setShares(updated);
+    } catch (e) {
+      setError(e.message || "Share failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleUnshare(userId) {
+    setBusy(true);
+    setError("");
+    try {
+      await unshareDocument(doc.id, userId, profile);
+      const updated = await fetchDocumentShares(doc.id);
+      setShares(updated);
+    } catch (e) {
+      setError(e.message || "Unshare failed.");
     } finally {
       setBusy(false);
     }
@@ -317,11 +406,34 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
               <Trash2 size={14} style={{ marginRight: 4 }} /> Delete Document
             </button>
           )}
+          {canEdit && !busy && (
+            <button onClick={() => setShowEdit(true)} className="tt-btn-primary" style={{ marginLeft: 8 }}>
+              Edit Document
+            </button>
+          )}
+          {canShare && !busy && (
+            <button onClick={() => { setShowShare(true); searchUsers(""); }} className="tt-btn-primary" style={{ marginLeft: 8 }}>
+              <Share2 size={14} style={{ marginRight: 4 }} /> Share
+            </button>
+          )}
           <button onClick={onClose} className="tt-btn-plain">Close</button>
         </div>
       </Modal>
 
-      {showQr && <QrCodeModal doc={doc} onClose={() => setShowQr(false)} />}
+      {showQr && (
+        <QrCodeModal
+          doc={doc}
+          onClose={() => setShowQr(false)}
+          onOpenTrack={() => { setShowQr(false); setShowTrack(true); }}
+        />
+      )}
+
+      {showTrack && (
+        <TrackDocumentModal
+          onClose={() => setShowTrack(false)}
+          initialId={doc.tracking_id}
+        />
+      )}
 
       {showDeleteConfirm && (
         <Modal onClose={() => setShowDeleteConfirm(false)} style={{ maxWidth: 420 }}>
@@ -342,6 +454,89 @@ export default function DocDetailModal({ doc, profile, onClose, onAction }) {
               <button onClick={handleDelete} disabled={busy} className="tt-btn-primary-lg" style={{ background: "#ef4444", borderColor: "#ef4444" }}>
                 {busy ? "Deleting..." : "Delete Permanently"}
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showEdit && (
+        <NewDocumentModal
+          onClose={() => setShowEdit(false)}
+          onSubmit={handleEditSubmit}
+          creatorProfile={profile}
+          initialDoc={doc}
+          initialRoute={canEditRoute
+            ? doc.steps?.slice(1).map((s) => (s.handler_role === ROLES.DIVISION ? s.handler_division : s.handler_role)) || []
+            : null}
+        />
+      )}
+
+      {showShare && (
+        <Modal onClose={() => setShowShare(false)} style={{ maxWidth: 520 }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Share Document</span>
+            <button onClick={() => setShowShare(false)} className="tt-x-btn">X</button>
+          </div>
+          <div style={{ padding: 20 }}>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 5, fontWeight: 600 }}>
+                Search users by name or email
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={shareSearch}
+                  onChange={(e) => { setShareSearch(e.target.value); searchUsers(e.target.value); }}
+                  placeholder="Type to search users..."
+                  style={{ ...inp, flex: 1 }}
+                />
+                {shareLoading && <span style={{ padding: "8px 12px", color: "#64748b", fontSize: 12 }}>Searching...</span>}
+              </div>
+            </div>
+
+            {shareResults.length > 0 && (
+              <div style={{ marginBottom: 16, borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>Search Results</div>
+                {shareResults.map((u) => (
+                  <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, background: "#f8fafc", marginBottom: 6 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#dbeafe", color: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 12, flexShrink: 0 }}>
+                      {(u.full_name || u.email).charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.full_name || u.email}</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>{u.role}{u.division ? ` — ${u.division}` : ""}</div>
+                    </div>
+                    {shares.some(s => s.shared_with === u.id) ? (
+                      <span style={{ fontSize: 11, color: "#16a34a", background: "#f0fdf4", padding: "2px 8px", borderRadius: 99 }}>Already shared</span>
+                    ) : (
+                      <button onClick={() => handleShare(u.id)} disabled={busy} className="tt-btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>Share</button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ borderTop: "1px solid #e2e8f0", paddingTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 8 }}>Currently Shared With ({shares.length})</div>
+              {shares.length === 0 ? (
+                <div style={{ padding: 16, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>Not shared with anyone yet.</div>
+              ) : (
+                shares.map((s) => (
+                  <div key={s.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 8, background: "#f8fafc", marginBottom: 6 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#dbeafe", color: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: 12, flexShrink: 0 }}>
+                      {(s.shared_with_profile?.full_name || s.shared_with_profile?.email || "?").charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.shared_with_profile?.full_name || s.shared_with_profile?.email}</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>Shared by {s.shared_by_profile?.full_name || s.shared_by_profile?.email} · {new Date(s.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</div>
+                    </div>
+                    {s.shared_by === profile.id && (
+                      <button onClick={() => handleUnshare(s.shared_with)} disabled={busy} className="tt-btn-danger" style={{ padding: "4px 8px", fontSize: 11 }}>
+                        <X size={12} style={{ marginRight: 3 }} /> Remove
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </Modal>

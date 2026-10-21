@@ -16,11 +16,29 @@ const EMPTY_FORM = {
   notes: "", attachment: null, urgency: "Normal", deadline: "",
 };
 
-export default function NewDocumentModal({ onClose, onSubmit, creatorProfile }) {
-  const [form, setForm] = useState(EMPTY_FORM);
+export default function NewDocumentModal({ onClose, onSubmit, creatorProfile, profiles = [], initialDoc = null, initialRoute = null }) {
+  const [form, setForm] = useState(initialDoc ? {
+    title: initialDoc.title,
+    type: initialDoc.doc_type,
+    origin: initialDoc.origin,
+    submittedBy: initialDoc.submitted_by,
+    notes: initialDoc.notes || "",
+    attachment: null,
+    urgency: initialDoc.urgency,
+    deadline: initialDoc.deadline ? initialDoc.deadline.split("T")[0] : "",
+  } : EMPTY_FORM);
+
+  const [originOther, setOriginOther] = useState("");
+  const [showOriginOther, setShowOriginOther] = useState(false);
+
+  // Build unique origin options from profiles (full_name or email)
+  const originOptions = Array.from(
+    new Set(profiles.map((p) => p.full_name || p.email).filter(Boolean))
+  ).sort();
   
   // Auto-set route based on creator's role
   const getInitialRoute = () => {
+    if (initialRoute) return [...initialRoute];
     if (!creatorProfile) return [...DEFAULT_ROUTE];
     
     const { role } = creatorProfile;
@@ -39,6 +57,8 @@ export default function NewDocumentModal({ onClose, onSubmit, creatorProfile }) 
 
   // Disable route editing for non-Mayor/non-CityAdmin roles
   const canEditRoute = creatorProfile && (creatorProfile.role === ROLES.MAYOR || creatorProfile.role === ROLES.CITY_ADMIN);
+
+  const isEditing = Boolean(initialDoc);
 
   async function handleSubmit() {
     if (!form.title || !form.type || !form.origin || !form.submittedBy || route.length === 0) {
@@ -75,7 +95,7 @@ export default function NewDocumentModal({ onClose, onSubmit, creatorProfile }) 
   return (
     <Modal onClose={onClose}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>Add Document</span>
+        <span style={{ fontWeight: 700, fontSize: 15 }}>{isEditing ? "Edit Document" : "Add Document"}</span>
         <button onClick={onClose} className="tt-x-btn">X</button>
       </div>
 
@@ -91,7 +111,6 @@ export default function NewDocumentModal({ onClose, onSubmit, creatorProfile }) 
 
         {[
           { label: "Document Title *", key: "title", placeholder: "e.g. Budget Proposal Q2" },
-          { label: "Originating Unit *", key: "origin", placeholder: "e.g. Office of the Mayor" },
           { label: "Submitted By *", key: "submittedBy", placeholder: "Full name" },
         ].map((f) => (
           <div key={f.key} style={{ marginBottom: 14 }}>
@@ -106,6 +125,57 @@ export default function NewDocumentModal({ onClose, onSubmit, creatorProfile }) 
             />
           </div>
         ))}
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: "block", fontSize: 12, color: "#64748b", marginBottom: 5, fontWeight: 600 }}>
+            Originating Unit *
+          </label>
+          {showOriginOther ? (
+            <input
+              value={originOther}
+              onChange={(e) => {
+                setOriginOther(e.target.value);
+                setForm((prev) => ({ ...prev, origin: e.target.value }));
+              }}
+              placeholder="Enter originating unit"
+              style={inp}
+            />
+          ) : (
+            <select
+              value={form.origin}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "__other__") {
+                  setShowOriginOther(true);
+                  setForm((prev) => ({ ...prev, origin: "" }));
+                } else {
+                  setForm((prev) => ({ ...prev, origin: val }));
+                  setOriginOther("");
+                }
+              }}
+              style={inp}
+            >
+              <option value="">Select originating unit</option>
+              {originOptions.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+              <option value="__other__">Other...</option>
+            </select>
+          )}
+          {showOriginOther && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowOriginOther(false);
+                setOriginOther("");
+                setForm((prev) => ({ ...prev, origin: "" }));
+              }}
+              style={{ marginTop: 6, padding: "4px 8px", fontSize: 11, color: "#2563eb", background: "none", border: "none", cursor: "pointer" }}
+            >
+              ← Back to list
+            </button>
+          )}
+        </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
           <div>
@@ -287,7 +357,7 @@ export default function NewDocumentModal({ onClose, onSubmit, creatorProfile }) 
           disabled={submitting}
           className="tt-btn-primary-lg"
         >
-          {submitting ? "Submitting..." : "Submit for Approval"}
+          {submitting ? "Saving..." : isEditing ? "Save Changes" : "Submit for Approval"}
         </button>
       </div>
 

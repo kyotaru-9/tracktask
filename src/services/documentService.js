@@ -64,18 +64,50 @@ async function logAudit({ documentId, action, profile, step }) {
   if (error) console.error("audit log insert failed:", error);
 }
 
-async function fetchDocumentsQuery() {
-  const { data, error } = await supabase
+export async function fetchDocumentsQuery(userId) {
+  if (!userId) return [];
+
+  // Fetch documents created by user
+  const { data: createdDocs, error: createdErr } = await supabase
     .from("documents")
     .select("*, steps:document_steps(*)")
+    .eq("created_by", userId)
     .order("created_at", { ascending: false })
     .order("step_order", { referencedTable: "document_steps", ascending: true });
-  if (error) throw error;
-  return data || [];
+  if (createdErr) throw createdErr;
+
+  // Fetch documents shared with user
+  const { data: shares, error: sharesErr } = await supabase
+    .from("document_shares")
+    .select("document_id")
+    .eq("shared_with", userId);
+  if (sharesErr) throw sharesErr;
+
+  let sharedDocs = [];
+  if (shares && shares.length > 0) {
+    const docIds = shares.map(s => s.document_id);
+    const { data, error } = await supabase
+      .from("documents")
+      .select("*, steps:document_steps(*)")
+      .in("id", docIds)
+      .order("created_at", { ascending: false })
+      .order("step_order", { referencedTable: "document_steps", ascending: true });
+    if (error) throw error;
+    sharedDocs = data || [];
+  }
+
+  // Combine and deduplicate (created docs take precedence)
+  const allDocs = [...(createdDocs || []), ...sharedDocs];
+  const seen = new Set();
+  return allDocs.filter(d => {
+    if (seen.has(d.id)) return false;
+    seen.add(d.id);
+    return true;
+  });
 }
 
-export async function fetchDocuments() {
-  return fetchDocumentsQuery();
+export async function fetchDocuments(userId) {
+  return fetchDocumentsQuery(userId);
 }
 
 export async function fetchNotifications(userId) {
@@ -129,6 +161,54 @@ async function notifyOffice({ role, division }, doc, message, dot, excludeUserId
       dot,
     }))
   );
+}
+
+// Notify the document creator
+async function notifyCreator(doc, message, dot, excludeUserId) {
+  if (!doc.created_by || doc.created_by === excludeUserId) return;
+  await insertNotifications([{
+    user_id: doc.created_by,
+    document_id: doc.id,
+    message,
+    dot,
+  }]);
+}
+
+// Notify all offices that have already acted on the document (previous approvers)
+async function notifyPreviousOffices(doc, steps, currentIdx, message, dot, excludeUserId) {
+  const offices = [];
+  const seen = new Set();
+  for (let i = 0; i < currentIdx; i++) {
+    const s = steps[i];
+    const key = `${s.handler_role}|${s.handler_division || ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      offices.push({ role: s.handler_role, division: s.handler_division });
+    }
+  }
+
+  const rows = [];
+  const notified = new Set([excludeUserId]);
+
+  // Creator
+  if (doc.created_by && !notified.has(doc.created_by)) {
+    rows.push({ user_id: doc.created_by, document_id: doc.id, message, dot });
+    notified.add(doc.created_by);
+  }
+
+  // Previous offices
+  for (const office of offices) {
+    let query = supabase.from("profiles").select("id").eq("role", office.role);
+    if (office.role === ROLES.DIVISION) query = query.eq("division", office.division);
+    const { data } = await query;
+    (data || []).forEach((p) => {
+      if (notified.has(p.id)) return;
+      notified.add(p.id);
+      rows.push({ user_id: p.id, document_id: doc.id, message, dot });
+    });
+  }
+
+  if (rows.length) await insertNotifications(rows);
 }
 
 // On "Done": notify every office that ever touched the document + creator
@@ -255,6 +335,88 @@ export async function createDocument(form, routeOptions, creatorProfile) {
   return doc;
 }
 
+// ── Update document (only while still at origin) ────────────────────────
+
+export async function updateDocument(documentId, form, routeOptions, profile) {
+  const [{ data: doc, error: docErr }, { data: steps, error: stepsErr }] = await Promise.all([
+    supabase.from("documents").select("*").eq("id", documentId).single(),
+    supabase.from("document_steps").select("*").eq("document_id", documentId).order("step_order"),
+  ]);
+  if (docErr) throw docErr;
+  if (stepsErr) throw stepsErr;
+
+  // Only allow edit if document is still at origin (creator's step, not yet acted upon)
+  const isAtOrigin = doc.current_step === 0 && doc.phase === "forward" && steps[0]?.status === "pending";
+  if (!isAtOrigin) throw new Error("Document has left the origin and can no longer be edited.");
+  if (doc.created_by !== profile.id) throw new Error("Only the document creator can edit it.");
+
+  // Upload new attachment if provided
+  let attachmentPath = doc.attachment;
+  if (form.attachment && form.attachment instanceof File) {
+    attachmentPath = await uploadAttachment(form.attachment, profile.id);
+  } else if (form.attachment === null) {
+    // Explicitly removed attachment
+    attachmentPath = null;
+  }
+
+  const creatorRole = profile.role;
+  const isMayor = creatorRole === ROLES.MAYOR;
+  const isCityAdmin = creatorRole === ROLES.CITY_ADMIN;
+
+  // Rebuild route steps if Mayor/CityAdmin (they can edit route)
+  let routeSteps;
+  if (isMayor || isCityAdmin) {
+    routeSteps = [
+      { handler_role: creatorRole, handler_division: null },
+      ...routeOptions.map((opt) => ({
+        handler_role: DIVISION_NAMES.includes(opt) ? ROLES.DIVISION : opt,
+        handler_division: DIVISION_NAMES.includes(opt) ? opt : null,
+      })),
+    ];
+  } else {
+    // Other roles: fixed route
+    routeSteps = [
+      { handler_role: creatorRole, handler_division: profile.division || null },
+      { handler_role: ROLES.CITY_ADMIN, handler_division: null },
+      { handler_role: ROLES.MAYOR, handler_division: null },
+    ];
+  }
+
+  // Update document
+  const { data: updatedDoc, error: updateErr } = await supabase
+    .from("documents")
+    .update({
+      title: form.title.trim(),
+      doc_type: form.type,
+      origin: form.origin.trim(),
+      submitted_by: form.submittedBy.trim(),
+      notes: form.notes.trim() || null,
+      urgency: form.urgency || "Normal",
+      deadline: form.deadline || null,
+      attachment: attachmentPath,
+    })
+    .eq("id", documentId)
+    .select()
+    .single();
+  if (updateErr) throw updateErr;
+
+  // Update steps if route changed (for Mayor/CityAdmin)
+  if (isMayor || isCityAdmin) {
+    // Delete existing steps and re-insert
+    await supabase.from("document_steps").delete().eq("document_id", documentId);
+    const stepsPayload = routeSteps.map((s, i) => ({
+      document_id: documentId,
+      step_order: i,
+      ...s,
+      status: i === 0 ? "pending" : "waiting",
+    }));
+    const { error: stepsError } = await supabase.from("document_steps").insert(stepsPayload);
+    if (stepsError) throw stepsError;
+  }
+
+  return updatedDoc;
+}
+
 // ── Workflow engine ───────────────────────────────────────────────────
 // actions:
 //   approve  – forward leg sign-off (final step auto-marks Complete)
@@ -292,12 +454,18 @@ export async function actOnDocument(documentId, action, comment, profile) {
         await supabase.from("document_steps").update({ status: "pending" }).eq("id", next.id);
         await supabase.from("documents").update({ current_step: idx + 1 }).eq("id", doc.id);
         await notifyOffice(next, doc, `${doc.tracking_id} “${doc.title}” was forwarded to your office for review.`, "#2563eb", profile.id);
+        // Notify creator and previous offices
+        await notifyCreator(doc, `${doc.tracking_id} “${doc.title}” was approved by ${stepLabel(step)} and forwarded.`, "#2563eb", profile.id);
+        await notifyPreviousOffices(doc, steps, idx + 1, `${doc.tracking_id} “${doc.title}” was approved by ${stepLabel(step)} and forwarded.`, "#2563eb", profile.id);
       } else {
         // Final approver marks Complete → automatic reverse routing
         if (idx > 0) {
           const prev = steps[idx - 1];
           await supabase.from("document_steps").update({ status: "pending" }).eq("id", prev.id);
           await notifyOffice(prev, doc, `${doc.tracking_id} “${doc.title}” was marked COMPLETE by ${stepLabel(step)} and is being returned to your office.`, "#f59e0b", profile.id);
+          // Notify creator and previous offices
+          await notifyCreator(doc, `${doc.tracking_id} “${doc.title}” was marked COMPLETE by ${stepLabel(step)} and is returning.`, "#f59e0b", profile.id);
+          await notifyPreviousOffices(doc, steps, idx, `${doc.tracking_id} “${doc.title}” was marked COMPLETE by ${stepLabel(step)} and is returning.`, "#f59e0b", profile.id);
         }
         await supabase
           .from("documents")
@@ -332,6 +500,9 @@ export async function actOnDocument(documentId, action, comment, profile) {
     if (prev) {
       await supabase.from("document_steps").update({ status: "pending" }).eq("id", prev.id);
       await notifyOffice(prev, doc, `${doc.tracking_id} “${doc.title}” was received by ${stepLabel(step)} and returned to your office.`, "#f59e0b", profile.id);
+      // Notify creator and previous offices
+      await notifyCreator(doc, `${doc.tracking_id} “${doc.title}” was received by ${stepLabel(step)} and is returning.`, "#f59e0b", profile.id);
+      await notifyPreviousOffices(doc, steps, idx, `${doc.tracking_id} “${doc.title}” was received by ${stepLabel(step)} and is returning.`, "#f59e0b", profile.id);
     }
     await supabase.from("documents").update({ current_step: Math.max(0, idx - 1) }).eq("id", doc.id);
     return;
@@ -379,4 +550,92 @@ export async function deleteDocument(documentId, profile) {
   
   const { error } = await supabase.from("documents").delete().eq("id", documentId);
   if (error) throw error;
+}
+
+// ── Document Shares ────────────────────────────────────────────────────
+
+export async function shareDocument(documentId, sharedWithUserId, profile) {
+  // Verify user has access to document (creator or already shared)
+  const { data: doc, error: docErr } = await supabase
+    .from("documents")
+    .select("created_by, tracking_id, title")
+    .eq("id", documentId)
+    .single();
+  if (docErr) throw docErr;
+
+  const hasAccess = doc.created_by === profile.id;
+  if (!hasAccess) {
+    const { data: existingShare } = await supabase
+      .from("document_shares")
+      .select("id")
+      .eq("document_id", documentId)
+      .eq("shared_with", profile.id)
+      .single();
+    if (!existingShare) throw new Error("You don't have access to share this document.");
+  }
+
+  const { data, error } = await supabase
+    .from("document_shares")
+    .insert({
+      document_id: documentId,
+      shared_with: sharedWithUserId,
+      shared_by: profile.id,
+    })
+    .select()
+    .single();
+  if (error) {
+    if (error.code === "23505") throw new Error("Document already shared with this user.");
+    throw error;
+  }
+
+  // Notify the shared user
+  await insertNotifications([{
+    user_id: sharedWithUserId,
+    document_id: documentId,
+    message: `${profile.full_name || profile.email} shared document ${doc.tracking_id} “${doc.title}” with you.`,
+    dot: "#8b5cf6",
+  }]);
+
+  return data;
+}
+
+export async function unshareDocument(documentId, sharedWithUserId, profile) {
+  const { error } = await supabase
+    .from("document_shares")
+    .delete()
+    .eq("document_id", documentId)
+    .eq("shared_with", sharedWithUserId)
+    .eq("shared_by", profile.id);
+  if (error) throw error;
+}
+
+export async function fetchDocumentShares(documentId) {
+  const { data, error } = await supabase
+    .from("document_shares")
+    .select(`
+      *,
+      shared_with_profile:profiles!shared_with (id, full_name, email, role, division),
+      shared_by_profile:profiles!shared_by (id, full_name, email)
+    `)
+    .eq("document_id", documentId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchSharedDocuments(userId) {
+  const { data, error } = await supabase
+    .from("document_shares")
+    .select(`
+      *,
+      document:documents!document_id (
+        *,
+        steps:document_steps(*)
+      ),
+      shared_by_profile:profiles!shared_by (id, full_name, email)
+    `)
+    .eq("shared_with", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
 }
