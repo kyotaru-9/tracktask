@@ -1,10 +1,8 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowRight, Layers, Building2, Server, FileSignature, Zap,
   UserPlus, FileText, Search
 } from 'lucide-react'
-import TrackDocumentModal from '../../components/TrackDocumentModal'
 import './LandingPage.css'
 
 const HOW_IT_WORKS_STEPS = [
@@ -27,7 +25,6 @@ const HOW_IT_WORKS_STEPS = [
 
 const LandingPage = () => {
   const navigate = useNavigate()
-  const [showTrackModal, setShowTrackModal] = useState(false)
   return (
     <div className="landing-layout">
       {/* Grid Pattern Overlay */}
@@ -53,7 +50,7 @@ const LandingPage = () => {
             <button className="header-btn-ghost" onClick={() => navigate('/request-document')}>
               Request Document
             </button>
-            <button className="header-btn-ghost" onClick={() => setShowTrackModal(true)}>
+            <button className="header-btn-ghost" onClick={() => navigate('/track-documents')}>
               Track Document
             </button>
           </nav>
@@ -83,7 +80,7 @@ const LandingPage = () => {
             </button>
             <button 
               className="btn-pill-secondary" 
-              onClick={() => setShowTrackModal(true)}
+              onClick={() => navigate('/track-documents')}
             >
               Track Documents
             </button>
@@ -189,10 +186,6 @@ const LandingPage = () => {
 
       {/* Footer */}
       <footer id="footer" className="sapforce-footer" />
-
-      {showTrackModal && (
-        <TrackDocumentModal onClose={() => setShowTrackModal(false)} />
-      )}
     </div>
   )
 }
