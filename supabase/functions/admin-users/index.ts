@@ -32,9 +32,9 @@ serve(async (req) => {
       .single()
 
     console.log('Profile check:', { userId: user.id, profile, profileError })
-    
-    if (profileError || !profile || profile.role !== 'HR') {
-      return new Response(JSON.stringify({ error: 'Forbidden: HR role required', debug: { userId: user.id, profile, profileError } }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+    if (profileError || !profile || profile.role !== 'IT') {
+      return new Response(JSON.stringify({ error: 'Forbidden: IT role required', debug: { userId: user.id, profile, profileError } }), { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     const body = await req.json()

@@ -28,7 +28,7 @@ create table if not exists public.profiles (
     'City ENRO',
     'SWM Secretary',
     'Division',
-    'HR'
+    'IT'
   )),
   division text null,
   created_at timestamptz not null default now(),
@@ -55,6 +55,9 @@ create table if not exists public.documents (
   phase text not null default 'forward'
     check (phase in ('forward', 'reverse')),
   current_step integer not null default 0,
+  is_deleted boolean not null default false,
+  deleted_at timestamptz null,
+  deleted_by uuid null references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -109,6 +112,8 @@ create index if not exists audit_logs_acted_by_idx on public.audit_logs (acted_b
 create index if not exists documents_created_at_idx on public.documents (created_at desc);
 create index if not exists documents_status_idx on public.documents (status);
 create index if not exists documents_tracking_id_idx on public.documents (tracking_id);
+create index if not exists documents_is_deleted_idx on public.documents (is_deleted);
+create index if not exists documents_deleted_at_idx on public.documents (deleted_at desc);
 create index if not exists document_steps_document_id_idx on public.document_steps (document_id);
 create index if not exists document_steps_document_order_idx on public.document_steps (document_id, step_order);
 create index if not exists notifications_user_id_idx on public.notifications (user_id, created_at desc);
@@ -233,25 +238,41 @@ create policy "profiles_update_own"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
--- HR can manage all profiles (create, update, delete)
-drop policy if exists "profiles_hr_manage" on public.profiles;
-create policy "profiles_hr_manage"
+-- IT can manage all profiles (create, update, delete)
+drop policy if exists "profiles_it_manage" on public.profiles;
+create policy "profiles_it_manage"
   on public.profiles for all
   to authenticated
   using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'HR')
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
   )
   with check (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'HR')
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
   );
 
 -- ---- documents ----
 -- Staff-only read: any logged-in user can list documents (dashboard).
+-- Non-IT users cannot see deleted documents (soft delete).
 drop policy if exists "documents_select_staff" on public.documents;
 create policy "documents_select_staff"
   on public.documents for select
   to authenticated
-  using (true);
+  using (
+    is_deleted = false or
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
+  );
+
+-- IT can update deleted documents (for restore functionality)
+drop policy if exists "documents_update_it" on public.documents;
+create policy "documents_update_it"
+  on public.documents for update
+  to authenticated
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
+  )
+  with check (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
+  );
 
 -- Only Mayor-role accounts can create (matches README + Dashboard UI gate).
 drop policy if exists "documents_insert_mayor" on public.documents;

@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Users, Plus, Edit, Trash2, Mail, Shield, Loader2, AlertCircle, UserX, UserCheck } from "lucide-react";
+import { Users, Plus, Edit, Trash2, Mail, Shield, Loader2, AlertCircle, UserX, UserCheck, FileText, RotateCcw, Clock } from "lucide-react";
 import { supabase } from "../../services/supabaseClient";
 import { ROLES, ROLE_LABELS } from "../../constants";
 import { inp } from "../../utils/styles";
 import Modal from "../../components/Modal";
+import { deleteDocument, restoreDocument, fetchDeletedDocuments } from "../../services/documentService";
 
 const ROLE_OPTIONS = [
   { value: ROLES.MAYOR, label: ROLE_LABELS[ROLES.MAYOR] },
@@ -11,7 +12,7 @@ const ROLE_OPTIONS = [
   { value: ROLES.CITY_ENRO, label: ROLE_LABELS[ROLES.CITY_ENRO] },
   { value: ROLES.SWM_SECRETARY, label: ROLE_LABELS[ROLES.SWM_SECRETARY] },
   { value: ROLES.DIVISION, label: ROLE_LABELS[ROLES.DIVISION] },
-  { value: ROLES.HR, label: ROLE_LABELS[ROLES.HR] },
+  { value: ROLES.IT, label: ROLE_LABELS[ROLES.IT] },
 ];
 
 const DIVISIONS = [
@@ -41,8 +42,10 @@ async function adminApi(action, params = {}) {
   return result;
 }
 
-export default function HRAdmin() {
+export default function ITAdmin() {
+  const [activeTab, setActiveTab] = useState("accounts");
   const [profiles, setProfiles] = useState([]);
+  const [deletedDocs, setDeletedDocs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -52,6 +55,7 @@ export default function HRAdmin() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [statusTarget, setStatusTarget] = useState(null);
   const [holdReason, setHoldReason] = useState("");
+  const [restoreConfirm, setRestoreConfirm] = useState(null);
 
   function initialForm() {
     return {
@@ -80,9 +84,34 @@ export default function HRAdmin() {
     setProfiles(profiles || []);
   }
 
+  async function fetchDeletedDocs() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profile) {
+        const docs = await fetchDeletedDocuments(profile);
+        setDeletedDocs(docs);
+      }
+    } catch (e) {
+      console.error("Failed to fetch deleted documents:", e);
+    }
+  }
+
   useEffect(() => {
-    fetchProfiles().finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    if (activeTab === "accounts") {
+      fetchProfiles().finally(() => setLoading(false));
+    } else if (activeTab === "deleted") {
+      fetchDeletedDocs().finally(() => setLoading(false));
+    }
+  }, [activeTab]);
 
   function openCreate() {
     setEditing(null);
@@ -207,9 +236,38 @@ export default function HRAdmin() {
       [ROLES.CITY_ENRO]: "#0d9488",
       [ROLES.SWM_SECRETARY]: "#dc2626",
       [ROLES.DIVISION]: "#16a34a",
-      [ROLES.HR]: "#ea580c",
+      [ROLES.IT]: "#ea580c",
     };
     return colors[role] || "#64748b";
+  }
+
+  async function handleRestore(doc) {
+    setRestoreConfirm(doc);
+  }
+
+  async function confirmRestore() {
+    if (!restoreConfirm) return;
+    setSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", session.user.id)
+        .single();
+
+      if (profile) {
+        await restoreDocument(restoreConfirm.id, profile);
+        await fetchDeletedDocs();
+      }
+    } catch (e) {
+      setError(e.message || "Restore failed.");
+    } finally {
+      setSubmitting(false);
+      setRestoreConfirm(null);
+    }
   }
 
   if (loading) {
@@ -225,11 +283,48 @@ export default function HRAdmin() {
     <div style={{ padding: "20px 24px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "#0f172a" }}>HR Admin Panel</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>Manage staff accounts and roles</p>
+          <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "#0f172a" }}>IT Admin Panel</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#64748b" }}>Manage staff accounts and deleted documents</p>
         </div>
-        <button onClick={openCreate} className="tt-btn-primary-lg" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <Plus size={16} /> Add Account
+        {activeTab === "accounts" && (
+          <button onClick={openCreate} className="tt-btn-primary-lg" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Plus size={16} /> Add Account
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 24, borderBottom: "1px solid #e2e8f0" }}>
+        <button
+          onClick={() => setActiveTab("accounts")}
+          style={{
+            padding: "10px 16px",
+            border: "none",
+            background: "none",
+            borderBottom: activeTab === "accounts" ? "2px solid #2563eb" : "2px solid transparent",
+            color: activeTab === "accounts" ? "#2563eb" : "#64748b",
+            fontWeight: activeTab === "accounts" ? 600 : 400,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          <Users size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />
+          Accounts
+        </button>
+        <button
+          onClick={() => setActiveTab("deleted")}
+          style={{
+            padding: "10px 16px",
+            border: "none",
+            background: "none",
+            borderBottom: activeTab === "deleted" ? "2px solid #dc2626" : "2px solid transparent",
+            color: activeTab === "deleted" ? "#dc2626" : "#64748b",
+            fontWeight: activeTab === "deleted" ? 600 : 400,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          <FileText size={16} style={{ verticalAlign: "middle", marginRight: 6 }} />
+          Deleted Documents
         </button>
       </div>
 
@@ -338,7 +433,66 @@ export default function HRAdmin() {
             )}
           </tbody>
         </table>
-      </div>
+      )}
+
+      {activeTab === "deleted" && (
+        <div className="tt-panel" style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["Tracking ID", "Title", "Type", "Deleted By", "Deleted At", "Actions"].map((h) => (
+                  <th key={h} style={{ ...td, textAlign: "left", padding: "12px 16px" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {deletedDocs.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ ...td, textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                    No deleted documents found.
+                  </td>
+                </tr>
+              ) : (
+                deletedDocs.map((doc) => (
+                  <tr key={doc.id} style={{ borderBottom: "1px solid #f1f5f9", background: "#fef2f2" }}>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 600, fontSize: 14, color: "#2563eb" }}>{doc.tracking_id}</div>
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 500, fontSize: 14 }}>{doc.title}</div>
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px", color: "#64748b" }}>
+                      {doc.doc_type}
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px", color: "#334155" }}>
+                      {doc.deleted_by_profile?.full_name || "Unknown"}
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px", color: "#64748b" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <Clock size={12} />
+                        {doc.deleted_at ? new Date(doc.deleted_at).toLocaleDateString("en-PH") : "Unknown"}
+                      </div>
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => handleRestore(doc)}
+                          className="tt-mini-btn"
+                          title="Restore document"
+                          disabled={submitting}
+                          style={{ background: "#dcfce7", color: "#15803d", borderColor: "#bbf7d0" }}
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {showModal && (
         <Modal onClose={closeModal} style={{ maxWidth: 520 }}>
@@ -563,6 +717,41 @@ export default function HRAdmin() {
               border-radius:10px; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;
               box-shadow:0 2px 6px rgba(239,68,68,0.25); transition:all .15s; white-space:nowrap; }
             .tt-btn-primary-lg:hover { box-shadow:0 4px 10px rgba(239,68,68,0.35); }
+            .tt-btn-primary-lg:disabled { opacity:.6; cursor:not-allowed; box-shadow:none; }
+            .animate-spin { animation: spin 1s linear infinite; }
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+          `}</style>
+        </Modal>
+      )}
+
+      {restoreConfirm && (
+        <Modal onClose={() => setRestoreConfirm(null)} style={{ maxWidth: 420 }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid #e2e8f0" }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Restore Document</span>
+          </div>
+          <div style={{ padding: 20, textAlign: "center" }}>
+            <RotateCcw size={48} style={{ color: "#16a34a", marginBottom: 12 }} />
+            <p style={{ fontSize: 14, color: "#334155", marginBottom: 8 }}>
+              Are you sure you want to restore <strong>{restoreConfirm.tracking_id}</strong>?
+            </p>
+            <p style={{ fontSize: 12, color: "#64748b", marginBottom: 20 }}>
+              {restoreConfirm.title}<br />
+              This will make the document visible to all users again.
+            </p>
+            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+              <button onClick={() => setRestoreConfirm(null)} className="tt-btn-plain">Cancel</button>
+              <button onClick={confirmRestore} disabled={submitting} className="tt-btn-primary-lg" style={{ background: "#16a34a", borderColor: "#16a34a" }}>
+                {submitting ? <Loader2 className="animate-spin" size={16} /> : "Restore"}
+              </button>
+            </div>
+          </div>
+          <style>{`
+            .tt-btn-plain { padding:7px 14px; border-radius:8px; border:1px solid #e2e8f0;
+              background:#fff; color:#334155; font-size:12px; cursor:pointer; font-family:inherit; }
+            .tt-btn-primary-lg { display:inline-flex; align-items:center; gap:8px; padding:9px 18px;
+              border-radius:10px; color:#fff; font-size:13px; font-weight:700; cursor:pointer; font-family:inherit;
+              box-shadow:0 2px 6px rgba(22,163,74,0.25); transition:all .15s; white-space:nowrap; }
+            .tt-btn-primary-lg:hover { box-shadow:0 4px 10px rgba(22,163,74,0.35); }
             .tt-btn-primary-lg:disabled { opacity:.6; cursor:not-allowed; box-shadow:none; }
             .animate-spin { animation: spin 1s linear infinite; }
             @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

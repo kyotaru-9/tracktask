@@ -28,7 +28,7 @@ import DocDetailModal from "../../components/DocDetailModal";
 import NewDocumentModal from "../../components/NewDocumentModal";
 import TrackDocumentModal from "../../components/TrackDocumentModal";
 import { Skeleton, DashboardSkeleton } from "../../components/Skeleton";
-import HRAdmin from "../HRAdmin/HRAdmin";
+import ITAdmin from "../ITAdmin/ITAdmin";
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -836,8 +836,8 @@ export default function Dashboard() {
         { key: "notifications", icon: Bell, label: "Notifications", badge: newNotifCount, badgeTone: "danger" },
       ],
     },
-    ...(profile?.role === ROLES.HR
-      ? [{ title: "Administration", items: [{ key: "hradmin", icon: Users, label: "HR Admin" }] }]
+    ...(profile?.role === ROLES.IT
+      ? [{ title: "Administration", items: [{ key: "itadmin", icon: Users, label: "IT Admin" }] }]
       : []),
   ];
 
@@ -930,7 +930,7 @@ export default function Dashboard() {
           {!loading && activeView === "documents" && documentsView}
           {!loading && activeView === "shared" && sharedView}
           {!loading && activeView === "notifications" && notificationsView}
-          {!loading && activeView === "hradmin" && <HRAdmin />}
+          {!loading && activeView === "itadmin" && <ITAdmin />}
         </div>
       </main>
 

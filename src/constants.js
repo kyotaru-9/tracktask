@@ -5,7 +5,7 @@ export const ROLES = {
   CITY_ENRO: "City ENRO",
   SWM_SECRETARY: "SWM Secretary",
   DIVISION: "Division",
-  HR: "HR",
+  IT: "IT",
 };
 
 export const ROLE_LABELS = {
@@ -14,7 +14,7 @@ export const ROLE_LABELS = {
   "City ENRO": "City ENRO",
   "SWM Secretary": "SWM Secretary",
   "Division": "Division",
-  "HR": "Human Resources",
+  "IT": "IT Department",
 };
 
 // The six sections under the City ENRO

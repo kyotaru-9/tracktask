@@ -67,16 +67,17 @@ async function logAudit({ documentId, action, profile, step }) {
 export async function fetchDocumentsQuery(userId) {
   if (!userId) return [];
 
-  // Fetch documents created by user
+  // Fetch documents created by user (excluding soft-deleted)
   const { data: createdDocs, error: createdErr } = await supabase
     .from("documents")
     .select("*, steps:document_steps(*)")
     .eq("created_by", userId)
+    .eq("is_deleted", false)
     .order("created_at", { ascending: false })
     .order("step_order", { referencedTable: "document_steps", ascending: true });
   if (createdErr) throw createdErr;
 
-  // Fetch documents shared with user
+  // Fetch documents shared with user (excluding soft-deleted)
   const { data: shares, error: sharesErr } = await supabase
     .from("document_shares")
     .select("document_id")
@@ -90,6 +91,7 @@ export async function fetchDocumentsQuery(userId) {
       .from("documents")
       .select("*, steps:document_steps(*)")
       .in("id", docIds)
+      .eq("is_deleted", false)
       .order("created_at", { ascending: false })
       .order("step_order", { referencedTable: "document_steps", ascending: true });
     if (error) throw error;
@@ -540,15 +542,35 @@ export async function fetchAuditLogs(documentId) {
 }
 
 export async function deleteDocument(documentId, profile) {
-  if (![ROLES.MAYOR, ROLES.CITY_ADMIN].includes(profile.role)) {
-    throw new Error("Only Mayor or City Administrator can delete documents.");
+  if (![ROLES.MAYOR, ROLES.CITY_ADMIN, ROLES.IT].includes(profile.role)) {
+    throw new Error("Only Mayor, City Administrator, or IT can delete documents.");
   }
 
-  await supabase.from("audit_logs").delete().eq("document_id", documentId);
-  await supabase.from("document_steps").delete().eq("document_id", documentId);
-  await supabase.from("notifications").delete().eq("document_id", documentId);
-  
-  const { error } = await supabase.from("documents").delete().eq("id", documentId);
+  // Soft delete: mark document as deleted instead of removing it
+  const { error } = await supabase
+    .from("documents")
+    .update({
+      is_deleted: true,
+      deleted_at: new Date().toISOString(),
+      deleted_by: profile.id,
+    })
+    .eq("id", documentId);
+  if (error) throw error;
+}
+
+export async function restoreDocument(documentId, profile) {
+  if (profile.role !== ROLES.IT) {
+    throw new Error("Only IT can restore deleted documents.");
+  }
+
+  const { error } = await supabase
+    .from("documents")
+    .update({
+      is_deleted: false,
+      deleted_at: null,
+      deleted_by: null,
+    })
+    .eq("id", documentId);
   if (error) throw error;
 }
 
@@ -636,6 +658,21 @@ export async function fetchSharedDocuments(userId) {
     `)
     .eq("shared_with", userId)
     .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function fetchDeletedDocuments(profile) {
+  if (profile.role !== ROLES.IT) {
+    throw new Error("Only IT can view deleted documents.");
+  }
+
+  const { data, error } = await supabase
+    .from("documents")
+    .select("*, steps:document_steps(*), deleted_by_profile:profiles!deleted_by (id, full_name, email)")
+    .eq("is_deleted", true)
+    .order("deleted_at", { ascending: false })
+    .order("step_order", { referencedTable: "document_steps", ascending: true });
   if (error) throw error;
   return data || [];
 }
