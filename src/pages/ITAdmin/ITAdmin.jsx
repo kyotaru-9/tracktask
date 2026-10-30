@@ -338,101 +338,103 @@ export default function ITAdmin() {
         </div>
       )}
 
-      <div className="tt-panel" style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
-          <thead>
-            <tr style={{ background: "#f8fafc" }}>
-              {["Name", "Email", "Role", "Division", "Status", "Actions"].map((h) => (
-                <th key={h} style={{ ...td, textAlign: "left", padding: "12px 16px" }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {profiles.length === 0 ? (
-              <tr>
-                <td colSpan={6} style={{ ...td, textAlign: "center", padding: 40, color: "#94a3b8" }}>
-                  No accounts found.
-                </td>
+      {activeTab === "accounts" && (
+        <div className="tt-panel" style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc" }}>
+                {["Name", "Email", "Role", "Division", "Status", "Actions"].map((h) => (
+                  <th key={h} style={{ ...td, textAlign: "left", padding: "12px 16px" }}>{h}</th>
+                ))}
               </tr>
-            ) : (
-              profiles.map((p) => {
-                const held = isHeld(p);
-                return (
-                <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9", background: held ? "#fef2f2" : undefined }}>
-                  <td style={{ ...td, padding: "12px 16px" }}>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
-                  </td>
-                  <td style={{ ...td, padding: "12px 16px", color: "#334155" }}>
-                    <a href={`mailto:${p.email}`} style={{ color: "#2563eb", textDecoration: "none" }}>
-                      <Mail size={14} style={{ verticalAlign: "middle", marginRight: 4 }} /> {p.email}
-                    </a>
-                  </td>
-                  <td style={{ ...td, padding: "12px 16px" }}>
-                    <span style={{
-                      display: "inline-block", padding: "4px 10px", borderRadius: 99,
-                      fontSize: 11, fontWeight: 700, background: getRoleBadgeColor(p.role) + "15",
-                      color: getRoleBadgeColor(p.role),
-                    }}>
-                      {ROLE_LABELS[p.role] || p.role}
-                    </span>
-                  </td>
-                  <td style={{ ...td, padding: "12px 16px", color: p.division ? "#334155" : "#94a3b8" }}>
-                    {p.division || (p.role === ROLES.DIVISION ? "Not assigned" : "—")}
-                  </td>
-                  <td style={{ ...td, padding: "12px 16px" }}>
-                    <span style={{
-                      display: "inline-block", padding: "4px 10px", borderRadius: 99,
-                      fontSize: 11, fontWeight: 700,
-                      background: held ? "#fee2e2" : "#dcfce7",
-                      color: held ? "#b91c1c" : "#15803d",
-                    }} title={held && p.hold_reason ? p.hold_reason : undefined}>
-                      {held ? "On Hold" : "Active"}
-                    </span>
-                    {held && p.held_at && (
-                      <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
-                        since {new Date(p.held_at).toLocaleDateString("en-PH")}
-                      </div>
-                    )}
-                  </td>
-                  <td style={{ ...td, padding: "12px 16px" }}>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        onClick={() => openEdit(p)}
-                        className="tt-mini-btn"
-                        title="Edit"
-                        style={{ background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}
-                      >
-                        <Edit size={14} />
-                      </button>
-                      <button
-                        onClick={() => openStatusChange(p)}
-                        className="tt-mini-btn"
-                        disabled={submitting || p.id === (window.__CURRENT_USER_ID || "")}
-                        title={held ? "Reactivate account" : "Hold / disable sign-in"}
-                        style={held
-                          ? { background: "#dcfce7", color: "#15803d", borderColor: "#bbf7d0" }
-                          : { background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" }}
-                      >
-                        {held ? <UserCheck size={14} /> : <UserX size={14} />}
-                      </button>
-                      {p.id !== (window.__CURRENT_USER_ID || "") && (
-                        <button
-                          onClick={() => handleDelete(p)}
-                          className="tt-mini-btn tt-mini-danger"
-                          title="Delete"
-                          disabled={submitting}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
+            </thead>
+            <tbody>
+              {profiles.length === 0 ? (
+                <tr>
+                  <td colSpan={6} style={{ ...td, textAlign: "center", padding: 40, color: "#94a3b8" }}>
+                    No accounts found.
                   </td>
                 </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+              ) : (
+                profiles.map((p) => {
+                  const held = isHeld(p);
+                  return (
+                  <tr key={p.id} style={{ borderBottom: "1px solid #f1f5f9", background: held ? "#fef2f2" : undefined }}>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{p.full_name}</div>
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px", color: "#334155" }}>
+                      <a href={`mailto:${p.email}`} style={{ color: "#2563eb", textDecoration: "none" }}>
+                        <Mail size={14} style={{ verticalAlign: "middle", marginRight: 4 }} /> {p.email}
+                      </a>
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <span style={{
+                        display: "inline-block", padding: "4px 10px", borderRadius: 99,
+                        fontSize: 11, fontWeight: 700, background: getRoleBadgeColor(p.role) + "15",
+                        color: getRoleBadgeColor(p.role),
+                      }}>
+                        {ROLE_LABELS[p.role] || p.role}
+                      </span>
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px", color: p.division ? "#334155" : "#94a3b8" }}>
+                      {p.division || (p.role === ROLES.DIVISION ? "Not assigned" : "—")}
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <span style={{
+                        display: "inline-block", padding: "4px 10px", borderRadius: 99,
+                        fontSize: 11, fontWeight: 700,
+                        background: held ? "#fee2e2" : "#dcfce7",
+                        color: held ? "#b91c1c" : "#15803d",
+                      }} title={held && p.hold_reason ? p.hold_reason : undefined}>
+                        {held ? "On Hold" : "Active"}
+                      </span>
+                      {held && p.held_at && (
+                        <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
+                          since {new Date(p.held_at).toLocaleDateString("en-PH")}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ ...td, padding: "12px 16px" }}>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          onClick={() => openEdit(p)}
+                          className="tt-mini-btn"
+                          title="Edit"
+                          style={{ background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe" }}
+                        >
+                          <Edit size={14} />
+                        </button>
+                        <button
+                          onClick={() => openStatusChange(p)}
+                          className="tt-mini-btn"
+                          disabled={submitting || p.id === (window.__CURRENT_USER_ID || "")}
+                          title={held ? "Reactivate account" : "Hold / disable sign-in"}
+                          style={held
+                            ? { background: "#dcfce7", color: "#15803d", borderColor: "#bbf7d0" }
+                            : { background: "#fff7ed", color: "#c2410c", borderColor: "#fed7aa" }}
+                        >
+                          {held ? <UserCheck size={14} /> : <UserX size={14} />}
+                        </button>
+                        {p.id !== (window.__CURRENT_USER_ID || "") && (
+                          <button
+                            onClick={() => handleDelete(p)}
+                            className="tt-mini-btn tt-mini-danger"
+                            title="Delete"
+                            disabled={submitting}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {activeTab === "deleted" && (
