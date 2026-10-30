@@ -13,6 +13,7 @@ React 19 + Vite + Supabase (Auth, Postgres, Realtime).
 | City Administrator | `cityadministrator@gmail.com` | Approver |
 | City ENRO | `cityenro@gmail.com` | Approver |
 | SWM Secretary | `swmsecretary@gmail.com` | Approver |
+| IT Department | `itadmin@city.gov.ph` | Manages staff accounts and deleted documents |
 | Division (×6) | `enro.<division>@gmail.com` | Approver (see below) |
 
 Divisions: Administrative & Permitting (`adminpermitting`), Environmental

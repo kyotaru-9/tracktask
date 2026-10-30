@@ -2,8 +2,8 @@
 -- TrackTask - ALL-IN-ONE single-run database
 -- Supabase Dashboard -> SQL Editor -> New query -> paste THIS ENTIRE FILE -> Run
 -- No prerequisites. Creates: extensions, tables, indexes, triggers, RPC,
--- RLS policies, realtime, 10 auth users (password Tracktask@2026),
--- 10 profiles, 5 demo documents + welcome notifications.
+-- RLS policies, realtime, 11 auth users (password Tracktask@2026),
+-- 11 profiles, 5 demo documents + welcome notifications.
 -- Idempotent: safe to re-run.
 -- ============================================================================
 
@@ -37,7 +37,7 @@ create table if not exists public.profiles (
     'City ENRO',
     'SWM Secretary',
     'Division',
-    'HR'
+    'IT'
   )),
   division text null,
   created_at timestamptz not null default now(),
@@ -64,6 +64,9 @@ create table if not exists public.documents (
   phase text not null default 'forward'
     check (phase in ('forward', 'reverse')),
   current_step integer not null default 0,
+  is_deleted boolean not null default false,
+  deleted_at timestamptz null,
+  deleted_by uuid null references public.profiles (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -118,6 +121,8 @@ create index if not exists audit_logs_acted_by_idx on public.audit_logs (acted_b
 create index if not exists documents_created_at_idx on public.documents (created_at desc);
 create index if not exists documents_status_idx on public.documents (status);
 create index if not exists documents_tracking_id_idx on public.documents (tracking_id);
+create index if not exists documents_is_deleted_idx on public.documents (is_deleted);
+create index if not exists documents_deleted_at_idx on public.documents (deleted_at desc);
 create index if not exists document_steps_document_id_idx on public.document_steps (document_id);
 create index if not exists document_steps_document_order_idx on public.document_steps (document_id, step_order);
 create index if not exists notifications_user_id_idx on public.notifications (user_id, created_at desc);
@@ -242,25 +247,41 @@ create policy "profiles_update_own"
   using (auth.uid() = id)
   with check (auth.uid() = id);
 
--- HR can manage all profiles (create, update, delete)
-drop policy if exists "profiles_hr_manage" on public.profiles;
-create policy "profiles_hr_manage"
+-- IT can manage all profiles (create, update, delete)
+drop policy if exists "profiles_it_manage" on public.profiles;
+create policy "profiles_it_manage"
   on public.profiles for all
   to authenticated
   using (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'HR')
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
   )
   with check (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'HR')
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
   );
 
 -- ---- documents ----
 -- Staff-only read: any logged-in user can list documents (dashboard).
+-- Non-IT users cannot see deleted documents (soft delete).
 drop policy if exists "documents_select_staff" on public.documents;
 create policy "documents_select_staff"
   on public.documents for select
   to authenticated
-  using (true);
+  using (
+    is_deleted = false or
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
+  );
+
+-- IT can update deleted documents (for restore functionality)
+drop policy if exists "documents_update_it" on public.documents;
+create policy "documents_update_it"
+  on public.documents for update
+  to authenticated
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
+  )
+  with check (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'IT')
+  );
 
 -- Only Mayor-role accounts can create (matches README + Dashboard UI gate).
 drop policy if exists "documents_insert_mayor" on public.documents;
@@ -403,7 +424,7 @@ alter table public.audit_logs replica identity full;
 -- create policy "attachments_delete_own" on storage.objects for delete to authenticated using (bucket_id = 'attachments' and auth.uid()::text = (storage.foldername(name))[1]);
 -- ============================================================================
 -- TrackTask — auth-create.sql (used by all-in-one.sql single-run)
--- Creates the 10 login accounts directly in auth.users + auth.identities.
+-- Creates the 11 login accounts directly in auth.users + auth.identities.
 --
 -- Dev password for all: Tracktask@2026
 -- Idempotent: safe to re-run (skips existing emails, repairs missing
@@ -459,6 +480,7 @@ begin
       ('cityadministrator@gmail.com',    'City Administrator'),
       ('cityenro@gmail.com',             'City ENRO Officer'),
       ('swmsecretary@gmail.com',         'SWM Secretary'),
+      ('itadmin@city.gov.ph',            'IT Department Admin'),
       ('enro.adminpermitting@gmail.com', 'Admin & Permitting Division Chief'),
       ('enro.envinfo@gmail.com',         'Env Info R&D Division Chief'),
       ('enro.greening@gmail.com',        'Greening & Forestry Division Chief'),
@@ -580,13 +602,13 @@ with staff (email, full_name, role, division) as (
     ('cityadministrator@gmail.com',    'City Administrator',                 'City Administrator', null),
     ('cityenro@gmail.com',             'City ENRO Officer',                  'City ENRO',          null),
     ('swmsecretary@gmail.com',         'SWM Secretary',                      'SWM Secretary',      null),
+    ('itadmin@city.gov.ph',            'IT Department Admin',                'IT',                 null),
     ('enro.adminpermitting@gmail.com', 'Admin & Permitting Division Chief',  'Division',           'Administrative and Permitting Division'),
     ('enro.envinfo@gmail.com',         'Env Info R&D Division Chief',        'Division',           'Environmental Information, Research and Development Division'),
     ('enro.greening@gmail.com',        'Greening & Forestry Division Chief', 'Division',           'City Greening and Forestry Management Division'),
     ('enro.natres@gmail.com',          'NatRes & Safety Division Chief',     'Division',           'Natural Resources Management and Safety Division'),
     ('enro.pollution@gmail.com',       'Pollution Control Division Chief',   'Division',           'Pollution Control and Management Division'),
-    ('enro.septage@gmail.com',         'Septage Treatment Division Chief',   'Division',           'Septage Treatment and Management Division'),
-    ('hr@city.gov.ph',                 'HR Officer',                         'HR',                 null)
+    ('enro.septage@gmail.com',         'Septage Treatment Division Chief',   'Division',           'Septage Treatment and Management Division')
 ),
 linked as (
   select u.id, s.email, s.full_name, s.role, s.division
@@ -613,13 +635,13 @@ begin
     ('cityadministrator@gmail.com'),
     ('cityenro@gmail.com'),
     ('swmsecretary@gmail.com'),
+    ('itadmin@city.gov.ph'),
     ('enro.adminpermitting@gmail.com'),
     ('enro.envinfo@gmail.com'),
     ('enro.greening@gmail.com'),
     ('enro.natres@gmail.com'),
     ('enro.pollution@gmail.com'),
-    ('enro.septage@gmail.com'),
-    ('hr@city.gov.ph')
+    ('enro.septage@gmail.com')
   ) as s(email)
   where not exists (select 1 from auth.users u where lower(u.email) = lower(s.email));
 

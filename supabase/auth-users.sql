@@ -19,6 +19,7 @@
 --   cityadministrator@gmail.com    → City Administrator
 --   cityenro@gmail.com             → City ENRO
 --   swmsecretary@gmail.com         → SWM Secretary
+--   itadmin@city.gov.ph            → IT Department
 --   enro.adminpermitting@gmail.com → Division / Administrative and Permitting Division
 --   enro.envinfo@gmail.com         → Division / Environmental Information, Research and Development Division
 --   enro.greening@gmail.com        → Division / City Greening and Forestry Management Division
@@ -37,6 +38,7 @@ with staff (email, full_name, role, division) as (
     ('cityadministrator@gmail.com',    'City Administrator',                 'City Administrator', null),
     ('cityenro@gmail.com',             'City ENRO Officer',                  'City ENRO',          null),
     ('swmsecretary@gmail.com',         'SWM Secretary',                      'SWM Secretary',      null),
+    ('itadmin@city.gov.ph',            'IT Department Admin',                'IT',                 null),
     ('enro.adminpermitting@gmail.com', 'Admin & Permitting Division Chief',  'Division',           'Administrative and Permitting Division'),
     ('enro.envinfo@gmail.com',         'Env Info R&D Division Chief',        'Division',           'Environmental Information, Research and Development Division'),
     ('enro.greening@gmail.com',        'Greening & Forestry Division Chief', 'Division',           'City Greening and Forestry Management Division'),
@@ -69,6 +71,7 @@ begin
     ('cityadministrator@gmail.com'),
     ('cityenro@gmail.com'),
     ('swmsecretary@gmail.com'),
+    ('itadmin@city.gov.ph'),
     ('enro.adminpermitting@gmail.com'),
     ('enro.envinfo@gmail.com'),
     ('enro.greening@gmail.com'),
@@ -81,7 +84,7 @@ begin
   if v_missing is not null then
     raise notice 'Missing auth users for: %. Create them in Authentication → Users (or run node supabase/seed.mjs), then re-run this file.', v_missing;
   else
-    raise notice 'All 10 staff profiles linked successfully.';
+    raise notice 'All 11 staff profiles linked successfully.';
   end if;
 end
 $$;

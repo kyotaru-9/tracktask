@@ -3,7 +3,7 @@
 // Working seeder that uses ONLY the public anon key (no service_role needed).
 //
 // What it does:
-//   1. signUp (or signIn if already registered) all 10 staff accounts
+//   1. signUp (or signIn if already registered) all 11 staff accounts
 //   2. Upserts public.profiles rows linked to the real auth.users UUIDs
 //   3. Inserts 5 demo documents + steps + welcome notifications as the Mayor
 //
@@ -46,6 +46,7 @@ const STAFF = [
   { email: 'cityadministrator@gmail.com',    full_name: 'City Administrator',                role: 'City Administrator', division: null },
   { email: 'cityenro@gmail.com',             full_name: 'City ENRO Officer',                 role: 'City ENRO',          division: null },
   { email: 'swmsecretary@gmail.com',         full_name: 'SWM Secretary',                     role: 'SWM Secretary',      division: null },
+  { email: 'itadmin@city.gov.ph',            full_name: 'IT Department Admin',               role: 'IT',                 division: null },
   { email: 'enro.adminpermitting@gmail.com', full_name: 'Admin & Permitting Division Chief', role: 'Division',           division: 'Administrative and Permitting Division' },
   { email: 'enro.envinfo@gmail.com',         full_name: 'Env Info R&D Division Chief',       role: 'Division',           division: 'Environmental Information, Research and Development Division' },
   { email: 'enro.greening@gmail.com',        full_name: 'Greening & Forestry Division Chief',role: 'Division',           division: 'City Greening and Forestry Management Division' },
@@ -78,7 +79,7 @@ async function ensureUser(email) {
 }
 
 const ids = {}; // email -> uuid
-console.log('1/3  Creating / signing in 10 staff accounts…');
+console.log('1/3  Creating / signing in 11 staff accounts…');
 for (const s of STAFF) {
   const u = await ensureUser(s.email);
   ids[s.email] = u.id;
@@ -102,7 +103,7 @@ for (const s of STAFF) {
   );
   if (error) throw new Error(`profile ${s.email}: ${error.message}`);
 }
-console.log('  ✓ 10 profiles linked to auth.users');
+console.log('  ✓ 11 profiles linked to auth.users');
 
 console.log('3/3  Seeding demo documents…');
 const daysFromNow = (n) => {
